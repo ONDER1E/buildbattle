@@ -6,43 +6,64 @@ import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.*;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.*;
 
 /**
  * PlayerListener
  * ==============
- * Handles all player-related events:
  *
- *  - Join:  Adds the player to the lobby.
- *  - Quit:  Removes the player from the active round.
- *  - Block interactions: Prevents building outside a player's plot using
- *    vanilla block events (WorldEdit masking is handled in WorldEditListener).
+ * PLOT BOUNDARY ENFORCEMENT (building state):
+ * -------------------------------------------
+ * We enforce THREE hard rules during BUILDING:
+ *
+ *  1. BlockBreakEvent / BlockPlaceEvent — cancel if target block is outside
+ *     the player's inner plot XZ range, OR below y=64 (floor protection), OR
+ *     the block being broken is IRON_BLOCK (wall protection).
+ *
+ *  2. PlayerMoveEvent — if a player physically moves outside their inner plot
+ *     XZ boundary or below y=64 we teleport them back to the plot centre.
+ *     This catches the "phase under the floor via creative flight" exploit.
+ *
+ *  Note: BlockBreakEvent does NOT fire reliably in creative mode for instant
+ *  breaks, so the movement check is the authoritative escape prevention.
+ *
+ * SPECTATOR CONFINEMENT (voting state):
+ * --------------------------------------
+ * Spectators can fly through solid blocks. We cancel PlayerMoveEvent whenever
+ * a spectator's position leaves the TOTAL footprint (inner + walls) of the
+ * currently displayed plot, and also clamp Y so they can't fly under the map.
  */
 public class PlayerListener implements Listener {
 
     private final BuildBattle plugin;
     private final GameManager gameManager;
 
+    /** Y floor during building — players cannot go below this. */
+    private static final int PLOT_FLOOR_Y = 64;
+    /** Y ceiling during building — creative players can't rocket out of range. */
+    private static final int PLOT_CEIL_Y  = 256;
+
     public PlayerListener(BuildBattle plugin, GameManager gameManager) {
         this.plugin      = plugin;
         this.gameManager = gameManager;
     }
 
-    // ── Player join / quit ────────────────────────────────────────────────────
+    // ── Join / Quit ───────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onJoin(PlayerJoinEvent event) {
-        // Only add to game if we're in LOBBY state
         if (gameManager.getCurrentState() == GameState.LOBBY) {
             gameManager.addPlayer(event.getPlayer());
         } else {
-            // Late join: put them in spectator mode at the lobby
-            event.getPlayer().setGameMode(org.bukkit.GameMode.SPECTATOR);
+            event.getPlayer().setGameMode(GameMode.SPECTATOR);
             event.getPlayer().teleport(plugin.getLobbySpawn());
             event.getPlayer().sendMessage(Component.text(
                     "A game is in progress. You are spectating!", NamedTextColor.YELLOW));
@@ -54,108 +75,159 @@ public class PlayerListener implements Listener {
         gameManager.removePlayer(event.getPlayer());
     }
 
-    // ── Block place / break restriction ──────────────────────────────────────
+    // ── Block break ───────────────────────────────────────────────────────────
 
     /**
-     * Prevent any player from placing blocks outside their inner plot area.
-     *
-     * This acts as a VANILLA safety net. The primary restriction during
-     * WorldEdit operations is enforced by the WorldEditListener mask.
-     * This listener catches manual block placement with the hand.
+     * Cancels block breaks that would escape the plot:
+     *  - Breaking IRON_BLOCK anywhere (walls must never be removable).
+     *  - Breaking any block below y=64 (floor layer is protected).
+     *  - Breaking any block outside the inner XZ plot boundary.
      */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        // Always protect barrier blocks (lobby walls)
+        if (event.getBlock().getType() == Material.BARRIER) {
+            event.setCancelled(true);
+            return;
+        }
+
+        if (gameManager.getCurrentState() != GameState.BUILDING) return;
+
+        Plot plot = plugin.getPlotManager().getPlot(event.getPlayer());
+        if (plot == null) { event.setCancelled(true); return; }
+
+        int bx = event.getBlock().getX();
+        int by = event.getBlock().getY();
+        int bz = event.getBlock().getZ();
+
+        // Hard rule: iron wall blocks can NEVER be broken
+        if (event.getBlock().getType() == Material.IRON_BLOCK) {
+            event.setCancelled(true);
+            return;
+        }
+
+        // Hard rule: nothing below the floor level
+        if (by < PLOT_FLOOR_Y) {
+            event.setCancelled(true);
+            return;
+        }
+
+        // Hard rule: must be inside inner XZ boundary
+        if (bx < plot.getInnerMinX() || bx > plot.getInnerMaxX()
+         || bz < plot.getInnerMinZ() || bz > plot.getInnerMaxZ()) {
+            event.setCancelled(true);
+            event.getPlayer().sendMessage(
+                    Component.text("You cannot break blocks outside your plot!", NamedTextColor.RED));
+        }
+    }
+
+    // ── Block place ───────────────────────────────────────────────────────────
+
+    /**
+     * Cancels block placements outside the inner XZ boundary or below the floor.
+     */
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         if (gameManager.getCurrentState() != GameState.BUILDING) return;
 
         Plot plot = plugin.getPlotManager().getPlot(event.getPlayer());
-        if (plot == null) {
-            // Player has no plot — they shouldn't be building at all
-            event.setCancelled(true);
-            return;
-        }
-
-        // Check if the placed block is inside the player's inner plot area
-        int bx = event.getBlock().getX();
-        int bz = event.getBlock().getZ();
-        if (bx < plot.getInnerMinX() || bx > plot.getInnerMaxX()
-         || bz < plot.getInnerMinZ() || bz > plot.getInnerMaxZ()) {
-            event.setCancelled(true);
-            event.getPlayer().sendMessage(Component.text(
-                    "You cannot build outside your plot!", NamedTextColor.RED));
-        }
-    }
-
-    /**
-     * Prevent block breaking outside the inner plot area.
-     */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onBlockBreak(BlockBreakEvent event) {
-        if (gameManager.getCurrentState() != GameState.BUILDING) return;
-
-        Plot plot = plugin.getPlotManager().getPlot(event.getPlayer());
-        if (plot == null) {
-            event.setCancelled(true);
-            return;
-        }
+        if (plot == null) { event.setCancelled(true); return; }
 
         int bx = event.getBlock().getX();
+        int by = event.getBlock().getY();
         int bz = event.getBlock().getZ();
-        if (bx < plot.getInnerMinX() || bx > plot.getInnerMaxX()
+
+        if (by < PLOT_FLOOR_Y
+         || bx < plot.getInnerMinX() || bx > plot.getInnerMaxX()
          || bz < plot.getInnerMinZ() || bz > plot.getInnerMaxZ()) {
             event.setCancelled(true);
-            event.getPlayer().sendMessage(Component.text(
-                    "You cannot break blocks outside your plot!", NamedTextColor.RED));
+            event.getPlayer().sendMessage(
+                    Component.text("You cannot build outside your plot!", NamedTextColor.RED));
         }
     }
 
-    /**
-     * Prevent LOBBY barrier walls from being broken by anyone.
-     * (They're barrier blocks, so players can't break them in survival/adventure anyway,
-     * but this adds an extra safeguard in creative mode.)
-     */
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
-    public void onBarrierBreak(BlockBreakEvent event) {
-        if (event.getBlock().getType() == org.bukkit.Material.BARRIER) {
-            event.setCancelled(true);
-        }
-    }
+    // ── Movement ──────────────────────────────────────────────────────────────
 
     /**
-     * FIX 4: During VOTING, spectators are confined to the inner area of the
-     * plot currently being voted on. If they drift outside, teleport them back
-     * to the centre of that plot.
+     * Central movement guard — handles three states:
      *
-     * Also: During LOBBY, prevent players from falling below the lobby floor.
+     * BUILDING: Creative players cannot fly below the floor or outside
+     *           their inner plot XZ bounds. Catches floor-phase exploits.
+     *
+     * VOTING:   Spectators are confined to the TOTAL footprint (inner + iron
+     *           wall region) of the plot being voted on, and cannot fly below
+     *           the floor or above the ceiling.
+     *
+     * LOBBY:    Prevent falling out of the lobby box.
+     *
+     * Performance: We early-exit if the player hasn't crossed a block boundary.
      */
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        // Only act if the player actually moved to a new block (perf optimisation)
-        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
-         && event.getFrom().getBlockY() == event.getTo().getBlockY()
-         && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
+        Location from = event.getFrom();
+        Location to   = event.getTo();
 
-        if (gameManager.getCurrentState() == GameState.VOTING) {
-            Plot votingPlot = gameManager.getCurrentVotingPlot();
-            if (votingPlot == null) return;
+        // Skip head-rotation-only moves (no position change)
+        if (from.getBlockX() == to.getBlockX()
+         && from.getBlockY() == to.getBlockY()
+         && from.getBlockZ() == to.getBlockZ()) return;
 
-            Location to = event.getTo();
+        GameState state = gameManager.getCurrentState();
+
+        // ── BUILDING: confine creative players to their plot ──────────────────
+        if (state == GameState.BUILDING) {
+            Plot plot = plugin.getPlotManager().getPlot(event.getPlayer());
+            if (plot == null) return;
+
             int bx = to.getBlockX();
+            int by = to.getBlockY();
             int bz = to.getBlockZ();
 
-            // Confine to the TOTAL footprint (inner + iron walls) — gives a bit
-            // of room to look around without letting players wander to other plots
-            if (bx < votingPlot.getTotalMinX() || bx > votingPlot.getTotalMaxX()
-             || bz < votingPlot.getTotalMinZ() || bz > votingPlot.getTotalMaxZ()) {
+            boolean outsideXZ = bx < plot.getInnerMinX() || bx > plot.getInnerMaxX()
+                              || bz < plot.getInnerMinZ() || bz > plot.getInnerMaxZ();
+            boolean belowFloor = by < PLOT_FLOOR_Y;
+            boolean aboveCeil  = by > PLOT_CEIL_Y;
+
+            if (outsideXZ || belowFloor || aboveCeil) {
                 event.setCancelled(true);
-                event.getPlayer().teleport(
-                        votingPlot.getCentreLocation(plugin.getPlotManager().getWorld())
-                                  .add(0, 5, 0));
+                // Snap back: keep their yaw/pitch but return to a safe position
+                Location safe = plot.getCentreLocation(plugin.getPlotManager().getWorld());
+                safe.setYaw(to.getYaw());
+                safe.setPitch(to.getPitch());
+                event.getPlayer().teleport(safe);
             }
             return;
         }
 
-        if (gameManager.getCurrentState() == GameState.LOBBY) {
-            if (event.getTo().getY() < 60) {
+        // ── VOTING: confine spectators to the current voting plot ─────────────
+        if (state == GameState.VOTING) {
+            Plot votingPlot = gameManager.getCurrentVotingPlot();
+            if (votingPlot == null) return;
+
+            int bx = to.getBlockX();
+            int by = to.getBlockY();
+            int bz = to.getBlockZ();
+
+            // Use TOTAL footprint so spectators can see the walls too
+            boolean outsideXZ = bx < votingPlot.getTotalMinX() || bx > votingPlot.getTotalMaxX()
+                              || bz < votingPlot.getTotalMinZ() || bz > votingPlot.getTotalMaxZ();
+            boolean belowFloor = by < PLOT_FLOOR_Y - 5;  // small buffer below floor for viewing
+            boolean aboveCeil  = by > PLOT_CEIL_Y + 10;
+
+            if (outsideXZ || belowFloor || aboveCeil) {
+                event.setCancelled(true);
+                Location safe = votingPlot.getCentreLocation(plugin.getPlotManager().getWorld());
+                safe.add(0, 5, 0);
+                safe.setYaw(to.getYaw());
+                safe.setPitch(to.getPitch());
+                event.getPlayer().teleport(safe);
+            }
+            return;
+        }
+
+        // ── LOBBY: prevent falling out of the barrier box ─────────────────────
+        if (state == GameState.LOBBY) {
+            if (to.getY() < 60) {
                 event.setCancelled(true);
                 event.getPlayer().teleport(plugin.getLobbySpawn());
             }

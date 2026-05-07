@@ -6,260 +6,272 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * PlotManager
  * ============
- * Responsible for all spatial and block-level plot management:
+ * Handles plot layout, async generation, and fast chunk-level cleanup.
  *
- *  1. Calculating X-axis offsets for each plot so they never overlap.
- *  2. Programmatically generating each plot's terrain (grass floor + iron walls).
- *  3. Cleaning up (deleting) plots when the game resets.
+ * PERFORMANCE DESIGN:
+ * -------------------
+ * The old approach called world.getBlockAt(x,y,z).setType() in a triple loop
+ * — up to 256 * 160 * 160 = ~6.5 million calls per plot, all on the main thread.
+ * That's what caused the 5s freeze.
  *
- * COORDINATE SYSTEM:
- *  - Plots are generated in the POSITIVE X direction.
- *  - Each plot's TOTAL footprint = innerSize + 2*bufferSize blocks wide on X and Z.
- *  - A small gap (one full plot width) is left between plots for air isolation.
- *  - Plot 0 starts after the lobby exclusion zone (x ≥ 0).
+ * New approach (two-phase):
  *
- * PLOT LAYOUT (top-down per plot):
+ * GENERATION:
+ *   1. getChunkAtAsync() — loads/generates each chunk off the main thread.
+ *   2. Once ALL chunks for a plot are ready, we fill them using the Chunk object
+ *      directly (chunk.getBlock(lx,y,lz).setType) which bypasses world lookups.
+ *   3. We batch chunk loading across all plots simultaneously so generation
+ *      is parallelised as much as the Paper scheduler allows.
+ *   4. A Bukkit runnable polls completion and calls the onComplete callback
+ *      when every plot chunk is filled, then teleports players.
  *
- *   [IRON WALL - bufferSize chunks wide]
- *   [IRON WALL][    GRASS FLOOR (10×10 chunks)    ][IRON WALL]
- *   [IRON WALL - bufferSize chunks wide]
+ * CLEANUP:
+ *   1. Instead of filling each chunk with AIR block-by-block, we call
+ *      world.regenerateChunk(cx, cz) which replaces the chunk wholesale
+ *      with a freshly generated void chunk (from our VoidChunkGenerator).
+ *      This is O(1) per chunk vs O(65536) per chunk.
+ *   2. After regeneration the chunk is unloaded with save=false.
  */
 public class PlotManager {
 
     private final BuildBattle plugin;
-    private final World world;
+    private final World       world;
 
-    /** Config-driven sizes. */
-    private final int plotChunks;   // e.g. 10
-    private final int bufferChunks; // e.g. 2
+    private final int plotChunks;
+    private final int bufferChunks;
+    private final int innerBlocks;
+    private final int bufferBlocks;
+    private final int totalBlocks;
 
-    /** Derived block sizes. */
-    private final int innerBlocks;  // plotChunks  * 16 = 160
-    private final int bufferBlocks; // bufferChunks * 16 = 32
-    private final int totalBlocks;  // innerBlocks + 2 * bufferBlocks = 224
-
-    /**
-     * The first X coordinate (block level) where Plot 0's TOTAL footprint begins.
-     * We start well clear of the lobby (which sits at negative X).
-     */
+    /** Plots extend in the positive X direction starting here. */
     private static final int FIRST_PLOT_ORIGIN_X = 0;
+    /** One-chunk gap between adjacent plot total footprints. */
+    private static final int PLOT_GAP_BLOCKS     = 16;
 
-    /** Active plots, keyed by owner UUID. */
     private final Map<UUID, Plot> plotsByOwner = new LinkedHashMap<>();
-
-    /** Ordered list of plots (index 0 = first generated). */
-    private final List<Plot> orderedPlots = new ArrayList<>();
+    private final List<Plot>      orderedPlots = new ArrayList<>();
 
     public PlotManager(BuildBattle plugin, World world) {
-        this.plugin       = plugin;
-        this.world        = world;
-
-        this.plotChunks   = plugin.getConfig().getInt("plot_size",   10);
-        this.bufferChunks = plugin.getConfig().getInt("buffer_size",  2);
-
-        this.innerBlocks  = plotChunks  * 16;
-        this.bufferBlocks = bufferChunks * 16;
-        this.totalBlocks  = innerBlocks + 2 * bufferBlocks;
+        this.plugin        = plugin;
+        this.world         = world;
+        this.plotChunks    = plugin.getConfig().getInt("plot_size",   10);
+        this.bufferChunks  = plugin.getConfig().getInt("buffer_size",  2);
+        this.innerBlocks   = plotChunks  * 16;
+        this.bufferBlocks  = bufferChunks * 16;
+        this.totalBlocks   = innerBlocks + 2 * bufferBlocks;
     }
 
-    // ── Plot generation ───────────────────────────────────────────────────────
+    // =========================================================================
+    // ── Generation ────────────────────────────────────────────────────────────
+    // =========================================================================
 
     /**
-     * Generate one plot per player in the provided (ordered) list.
+     * Asynchronously generate one plot per player.
      *
-     * Each plot is placed at:
-     *   totalMinX = FIRST_PLOT_ORIGIN_X + index * (totalBlocks + GAP)
+     * Chunks are loaded in parallel via getChunkAtAsync(). Once every chunk
+     * for a plot is resident in memory we fill it on the main thread in a
+     * single tight loop over the Chunk object — no world.getBlockAt overhead.
      *
-     * Generation is done synchronously on the main thread using Paper's
-     * chunk-loading API to ensure chunks exist before we place blocks.
-     *
-     * @param players Ordered list of players who need plots.
+     * @param players    Ordered list; plot index matches list order.
+     * @param onComplete Called on the main thread when all plots are ready.
      */
-    public void generatePlots(List<Player> players) {
+    public void generatePlots(List<Player> players, Runnable onComplete) {
         plotsByOwner.clear();
         orderedPlots.clear();
 
-        // Gap between plots = one chunk on each side so the iron walls of
-        // adjacent plots do not touch.
-        int gap = 16; // 1 chunk gap
-
+        // Build the Plot metadata objects first (pure math, instant)
         for (int i = 0; i < players.size(); i++) {
-            Player player = players.get(i);
-
-            // Calculate where this plot's inner area starts (in blocks)
-            int totalMinX = FIRST_PLOT_ORIGIN_X + i * (totalBlocks + gap);
+            int totalMinX = FIRST_PLOT_ORIGIN_X + i * (totalBlocks + PLOT_GAP_BLOCKS);
             int innerMinX = totalMinX + bufferBlocks;
-
-            // Z is centred around 0 for all plots
             int innerMinZ = -(innerBlocks / 2);
-
-            Plot plot = new Plot(i, player.getUniqueId(),
-                                 innerMinX, innerMinZ,
-                                 innerBlocks, bufferBlocks);
-
-            plotsByOwner.put(player.getUniqueId(), plot);
+            Plot plot = new Plot(i, players.get(i).getUniqueId(),
+                                 innerMinX, innerMinZ, innerBlocks, bufferBlocks);
+            plotsByOwner.put(players.get(i).getUniqueId(), plot);
             orderedPlots.add(plot);
-
-            // Physically build the plot terrain
-            buildPlot(plot);
         }
 
-        plugin.getLogger().info("[PlotManager] Generated " + players.size() + " plots.");
+        // Count total chunks across all plots so we know when we're done
+        int totalChunks = orderedPlots.stream()
+                .mapToInt(p -> {
+                    int cxRange = (p.getTotalMaxX() >> 4) - (p.getTotalMinX() >> 4) + 1;
+                    int czRange = (p.getTotalMaxZ() >> 4) - (p.getTotalMinZ() >> 4) + 1;
+                    return cxRange * czRange;
+                }).sum();
+
+        AtomicInteger readyChunks = new AtomicInteger(0);
+
+        // Fire off async chunk loads for every plot chunk simultaneously
+        for (Plot plot : orderedPlots) {
+            int minCX = plot.getTotalMinX() >> 4;
+            int maxCX = plot.getTotalMaxX() >> 4;
+            int minCZ = plot.getTotalMinZ() >> 4;
+            int maxCZ = plot.getTotalMaxZ() >> 4;
+
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    final int finalCX = cx;
+                    final int finalCZ = cz;
+                    final Plot finalPlot = plot;
+
+                    // getChunkAtAsync loads/generates the chunk off the main thread,
+                    // then calls our callback on the main thread once it's resident.
+                    world.getChunkAtAsync(cx, cz).thenAccept(chunk -> {
+                        // This callback fires on the main thread — safe to set blocks
+                        fillChunk(chunk, finalPlot);
+
+                        // When the last chunk is done, call onComplete
+                        if (readyChunks.incrementAndGet() == totalChunks) {
+                            plugin.getLogger().info("[PlotManager] All "
+                                    + orderedPlots.size() + " plots generated.");
+                            onComplete.run();
+                        }
+                    });
+                }
+            }
+        }
     }
 
     /**
-     * Fills a single plot with its grass floor and iron-block walls.
+     * Fills a single chunk with the correct plot material.
      *
-     * Floor:  y=64, inner area only, Material.GRASS_BLOCK
-     * Walls:  y=0–255, bufferBlocks wide on all four sides, Material.IRON_BLOCK
-     *         Also covers the corners (diagonal wall sections).
+     * For chunks that are entirely within the iron-wall buffer zone: fill
+     * the entire column (y=minHeight to maxHeight) with IRON_BLOCK.
+     *
+     * For chunks that are entirely within the inner plot area: place a single
+     * GRASS_BLOCK layer at y=64 and leave everything else AIR.
+     *
+     * For chunks that straddle the boundary (edge chunks): check each
+     * block column individually.
+     *
+     * This block-local arithmetic is much faster than calling world.getBlockAt()
+     * because it skips the world coordinate → chunk lookup step.
      */
-    private void buildPlot(Plot plot) {
-        int totalMinX = plot.getTotalMinX();
-        int totalMaxX = plot.getTotalMaxX();
-        int totalMinZ = plot.getTotalMinZ();
-        int totalMaxZ = plot.getTotalMaxZ();
-        int innerMinX = plot.getInnerMinX();
-        int innerMaxX = plot.getInnerMaxX();
-        int innerMinZ = plot.getInnerMinZ();
-        int innerMaxZ = plot.getInnerMaxZ();
+    private void fillChunk(Chunk chunk, Plot plot) {
+        int chunkWorldX = chunk.getX() << 4; // world X of chunk's local x=0
+        int chunkWorldZ = chunk.getZ() << 4;
 
-        // Ensure all required chunks are loaded first
-        preloadChunks(totalMinX >> 4, totalMaxX >> 4,
-                      totalMinZ >> 4, totalMaxZ >> 4);
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
 
-        // ── Place grass floor at y=64 (inner area only) ────────────────────
-        for (int x = innerMinX; x <= innerMaxX; x++) {
-            for (int z = innerMinZ; z <= innerMaxZ; z++) {
-                world.getBlockAt(x, 64, z).setType(Material.GRASS_BLOCK, false);
-            }
-        }
+        for (int lx = 0; lx < 16; lx++) {
+            int worldX = chunkWorldX + lx;
+            for (int lz = 0; lz < 16; lz++) {
+                int worldZ = chunkWorldZ + lz;
 
-        // ── Place iron walls (y=0 to y=255) ───────────────────────────────
-        // We iterate over the TOTAL footprint and place iron wherever we are
-        // NOT in the inner area.
-        for (int x = totalMinX; x <= totalMaxX; x++) {
-            for (int z = totalMinZ; z <= totalMaxZ; z++) {
-                boolean isInner = (x >= innerMinX && x <= innerMaxX
-                                && z >= innerMinZ && z <= innerMaxZ);
-                if (!isInner) {
-                    // This column is part of the iron wall
-                    for (int y = 0; y <= 255; y++) {
-                        world.getBlockAt(x, y, z).setType(Material.IRON_BLOCK, false);
+                boolean isInner = worldX >= plot.getInnerMinX() && worldX <= plot.getInnerMaxX()
+                               && worldZ >= plot.getInnerMinZ() && worldZ <= plot.getInnerMaxZ();
+
+                if (isInner) {
+                    // Inner plot column: grass floor at y=64, air everywhere else
+                    chunk.getBlock(lx, 64, lz).setType(Material.GRASS_BLOCK, false);
+                    // Everything else in the column is already air (void world)
+                } else {
+                    // Wall column: iron from minHeight to maxHeight
+                    for (int y = minY; y < maxY; y++) {
+                        chunk.getBlock(lx, y, lz).setType(Material.IRON_BLOCK, false);
                     }
                 }
             }
         }
     }
 
-    /**
-     * Synchronously load (or generate) all chunks in the given chunk coordinate
-     * range so that setType calls don't drop into unloaded chunk space.
-     */
-    private void preloadChunks(int minCX, int maxCX, int minCZ, int maxCZ) {
-        for (int cx = minCX; cx <= maxCX; cx++) {
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                if (!world.isChunkLoaded(cx, cz)) {
-                    world.loadChunk(cx, cz, true);
-                }
-            }
-        }
-    }
-
-    // ── Plot cleanup ──────────────────────────────────────────────────────────
+    // =========================================================================
+    // ── Cleanup ───────────────────────────────────────────────────────────────
+    // =========================================================================
 
     /**
-     * Deletes all plot chunks from disk and memory.
+     * Destroys all plot chunks by regenerating them as void chunks.
      *
-     * Called during the RESET state to prevent world bloat.
-     * Iterates over every chunk in each plot's total footprint and
-     * forces it to be unloaded and deleted.
+     * world.regenerateChunk(cx, cz) replaces the chunk entirely using the
+     * world's ChunkGenerator (our VoidChunkGenerator → all air). This is
+     * orders of magnitude faster than setting every block to AIR individually.
+     *
+     * After regeneration the chunk is unloaded with save=false so no data
+     * is written to disk.
+     *
+     * @param onComplete Called on the main thread when cleanup is finished.
      */
-    public void destroyAllPlots() {
-        for (Plot plot : orderedPlots) {
-            destroyPlot(plot);
-        }
+    @SuppressWarnings("deprecation") // regenerateChunk is deprecated but still the fastest approach in 1.20
+    public void destroyAllPlots(Runnable onComplete) {
+        List<Plot> toDestroy = new ArrayList<>(orderedPlots);
         plotsByOwner.clear();
         orderedPlots.clear();
-        plugin.getLogger().info("[PlotManager] All plots destroyed.");
-    }
 
-    /**
-     * Regenerates a single plot's chunk range as void (air), then unloads it.
-     * This effectively "deletes" the plot without touching the region file
-     * infrastructure — the chunk will simply be re-generated as void next time.
-     */
-    private void destroyPlot(Plot plot) {
-        int minCX = plot.getTotalMinX() >> 4;
-        int maxCX = plot.getTotalMaxX() >> 4;
-        int minCZ = plot.getTotalMinZ() >> 4;
-        int maxCZ = plot.getTotalMaxZ() >> 4;
+        if (toDestroy.isEmpty()) {
+            onComplete.run();
+            return;
+        }
 
-        for (int cx = minCX; cx <= maxCX; cx++) {
-            for (int cz = minCZ; cz <= maxCZ; cz++) {
-                if (world.isChunkLoaded(cx, cz)) {
-                    Chunk chunk = world.getChunkAt(cx, cz);
-
-                    // Fill every block in the chunk with air to wipe the build
-                    for (int lx = 0; lx < 16; lx++) {
-                        for (int lz = 0; lz < 16; lz++) {
-                            for (int y = world.getMinHeight(); y < world.getMaxHeight(); y++) {
-                                Block block = chunk.getBlock(lx, y, lz);
-                                if (block.getType() != Material.AIR) {
-                                    block.setType(Material.AIR, false);
-                                }
-                            }
-                        }
-                    }
-
-                    // Unload and delete the chunk from disk
-                    world.unloadChunk(cx, cz, false); // false = do NOT save to disk
+        // Collect all unique chunk coordinates across all plots
+        Set<Long> chunkKeys = new LinkedHashSet<>();
+        Map<Long, int[]> chunkCoords = new HashMap<>();
+        for (Plot plot : toDestroy) {
+            int minCX = plot.getTotalMinX() >> 4;
+            int maxCX = plot.getTotalMaxX() >> 4;
+            int minCZ = plot.getTotalMinZ() >> 4;
+            int maxCZ = plot.getTotalMaxZ() >> 4;
+            for (int cx = minCX; cx <= maxCX; cx++) {
+                for (int cz = minCZ; cz <= maxCZ; cz++) {
+                    long key = Plot.chunkKey(cx, cz);
+                    chunkKeys.add(key);
+                    chunkCoords.put(key, new int[]{cx, cz});
                 }
             }
         }
+
+        // Process chunks in batches of 20 per tick to avoid a single-tick spike.
+        // Each batch takes ~1ms; 20 chunks/tick = smooth ~1 tick per batch.
+        List<Long> keyList = new ArrayList<>(chunkKeys);
+        final int BATCH_SIZE = 20;
+        final int[] cursor = {0};
+
+        Bukkit.getScheduler().runTaskTimer(plugin, task -> {
+            int end = Math.min(cursor[0] + BATCH_SIZE, keyList.size());
+            for (int i = cursor[0]; i < end; i++) {
+                int[] coords = chunkCoords.get(keyList.get(i));
+                int cx = coords[0], cz = coords[1];
+                // regenerateChunk replaces chunk contents via our VoidChunkGenerator
+                world.regenerateChunk(cx, cz);
+                // Unload without saving — chunk is now void, no disk footprint
+                world.unloadChunk(cx, cz, false);
+            }
+            cursor[0] = end;
+
+            if (cursor[0] >= keyList.size()) {
+                task.cancel();
+                plugin.getLogger().info("[PlotManager] All plots destroyed ("
+                        + keyList.size() + " chunks reset).");
+                onComplete.run();
+            }
+        }, 1L, 1L); // start 1 tick after call, run every tick
     }
 
+    // =========================================================================
     // ── Lookup helpers ────────────────────────────────────────────────────────
+    // =========================================================================
 
-    /** Get a player's plot, or null if they have none. */
-    public Plot getPlot(UUID playerUUID) {
-        return plotsByOwner.get(playerUUID);
-    }
+    public Plot getPlot(UUID uuid)     { return plotsByOwner.get(uuid); }
+    public Plot getPlot(Player player) { return getPlot(player.getUniqueId()); }
 
-    /** Get a player's plot, or null. */
-    public Plot getPlot(Player player) {
-        return getPlot(player.getUniqueId());
-    }
-
-    /**
-     * Determine which plot (if any) a Location falls inside the INNER area of.
-     * Used for WorldEdit mask enforcement.
-     */
     public Plot getPlotAtLocation(Location loc) {
         if (!loc.getWorld().equals(world)) return null;
-        int bx = loc.getBlockX();
-        int bz = loc.getBlockZ();
-        for (Plot plot : orderedPlots) {
-            if (bx >= plot.getInnerMinX() && bx <= plot.getInnerMaxX()
-             && bz >= plot.getInnerMinZ() && bz <= plot.getInnerMaxZ()) {
-                return plot;
-            }
+        int bx = loc.getBlockX(), bz = loc.getBlockZ();
+        for (Plot p : orderedPlots) {
+            if (bx >= p.getInnerMinX() && bx <= p.getInnerMaxX()
+             && bz >= p.getInnerMinZ() && bz <= p.getInnerMaxZ()) return p;
         }
         return null;
     }
 
-    /** Ordered list of all active plots. */
-    public List<Plot> getOrderedPlots() { return Collections.unmodifiableList(orderedPlots); }
-
-    /** All active plots keyed by owner UUID. */
-    public Map<UUID, Plot> getPlotsByOwner() { return Collections.unmodifiableMap(plotsByOwner); }
-
-    public World getWorld() { return world; }
-    public int getInnerBlocks()  { return innerBlocks; }
-    public int getBufferBlocks() { return bufferBlocks; }
-    public int getTotalBlocks()  { return totalBlocks; }
+    public List<Plot> getOrderedPlots()          { return Collections.unmodifiableList(orderedPlots); }
+    public Map<UUID, Plot> getPlotsByOwner()      { return Collections.unmodifiableMap(plotsByOwner); }
+    public World getWorld()                       { return world; }
+    public int   getInnerBlocks()                 { return innerBlocks; }
+    public int   getBufferBlocks()                { return bufferBlocks; }
+    public int   getTotalBlocks()                 { return totalBlocks; }
 }

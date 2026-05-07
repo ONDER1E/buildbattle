@@ -244,35 +244,39 @@ public class GameManager {
             return;
         }
 
-        plotManager.generatePlots(activePlayers);
+        broadcast(Component.text("Generating plots...", NamedTextColor.GRAY));
+
+        // Async generation — players are teleported inside the onComplete callback
+        // once every chunk is actually resident in memory.
         packetHandler.enableBuildingFilter(plotManager);
+        plotManager.generatePlots(activePlayers, () -> {
+            // This runs on the main thread after all chunks are filled
+            for (Player player : activePlayers) {
+                Plot plot = plotManager.getPlot(player);
+                if (plot == null) continue;
+                player.setGameMode(GameMode.CREATIVE);
+                player.teleport(plot.getCentreLocation(plotManager.getWorld()));
+            }
 
-        for (Player player : activePlayers) {
-            Plot plot = plotManager.getPlot(player);
-            if (plot == null) continue;
-            player.setGameMode(GameMode.CREATIVE);
-            player.teleport(plot.getCentreLocation(plotManager.getWorld()));
-        }
+            broadcast(sep());
+            broadcast(Component.text("         BUILD BATTLE", NamedTextColor.GOLD, TextDecoration.BOLD));
+            broadcast(sep());
+            broadcast(Component.text("  Theme : " + selectedTheme.toUpperCase(),
+                    NamedTextColor.AQUA, TextDecoration.BOLD));
+            broadcast(Component.text("  Time  : " + buildTimerMinutes + " minutes", NamedTextColor.YELLOW));
+            broadcast(Component.empty());
+            broadcast(Component.text("  Commands:", NamedTextColor.WHITE, TextDecoration.BOLD));
+            broadcast(Component.text("  /done                    — finish early", NamedTextColor.GRAY));
+            broadcast(Component.text("  /setplotblock <material> — change floor block", NamedTextColor.GRAY));
+            broadcast(sep());
 
-        broadcast(sep());
-        broadcast(Component.text("         BUILD BATTLE", NamedTextColor.GOLD, TextDecoration.BOLD));
-        broadcast(sep());
-        broadcast(Component.text("  Theme : " + selectedTheme.toUpperCase(),
-                NamedTextColor.AQUA, TextDecoration.BOLD));
-        broadcast(Component.text("  Time  : " + buildTimerMinutes + " minutes", NamedTextColor.YELLOW));
-        broadcast(Component.empty());
-        // FIX 5: building command help
-        broadcast(Component.text("  Commands:", NamedTextColor.WHITE, TextDecoration.BOLD));
-        broadcast(Component.text("  /done                    — finish early", NamedTextColor.GRAY));
-        broadcast(Component.text("  /setplotblock <material> — change floor block", NamedTextColor.GRAY));
-        broadcast(sep());
-
-        startCountdown(buildTimerMinutes * 60, () -> {
-            broadcast(Component.text("Time's up! Moving to voting...",
-                    NamedTextColor.RED, TextDecoration.BOLD));
-            transitionTo(GameState.VOTING);
-        });
-    }
+            startCountdown(buildTimerMinutes * 60, () -> {
+                broadcast(Component.text("Time's up! Moving to voting...",
+                        NamedTextColor.RED, TextDecoration.BOLD));
+                transitionTo(GameState.VOTING);
+            });
+        }); // end generatePlots callback
+    } // end enterBuilding
 
     public void markDone(Player player) {
         if (currentState != GameState.BUILDING) {
@@ -460,7 +464,6 @@ public class GameManager {
         currentVotingPlot = null;
 
         broadcast(Component.text("Resetting — see you in the lobby!", NamedTextColor.GRAY));
-        plotManager.destroyAllPlots();
 
         List<Player> online = getOnlineParticipants(); // snapshot before clear
 
@@ -472,13 +475,16 @@ public class GameManager {
         selectedTheme   = "";
         votingPlotIndex = 0;
 
-        // Teleport everyone back and restore adventure mode
-        for (Player p : online) {
-            p.setGameMode(GameMode.ADVENTURE);
-            p.teleport(plugin.getLobbySpawn());
-        }
-
-        Bukkit.getScheduler().runTaskLater(plugin, () -> transitionTo(GameState.LOBBY), 20L);
+        // Async batched chunk regeneration — teleport everyone once it's done
+        plotManager.destroyAllPlots(() -> {
+            for (Player p : online) {
+                if (p.isOnline()) {
+                    p.setGameMode(GameMode.ADVENTURE);
+                    p.teleport(plugin.getLobbySpawn());
+                }
+            }
+            Bukkit.getScheduler().runTaskLater(plugin, () -> transitionTo(GameState.LOBBY), 20L);
+        });
     }
 
     public void forceReset() { transitionTo(GameState.RESET); }
