@@ -26,6 +26,11 @@
             <id>enginehub</id>
             <url>https://maven.enginehub.org/repo/</url>
         </repository>
+        <!-- ProtocolLib is hosted on dmulloy2's repo, NOT Maven Central -->
+        <repository>
+            <id>dmulloy2-repo</id>
+            <url>https://repo.dmulloy2.net/repository/public/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -43,11 +48,11 @@
             <version>7.3.0-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        <!-- ProtocolLib for packet interception -->
+        <!-- ProtocolLib for packet interception — hosted on dmulloy2-repo -->
         <dependency>
             <groupId>com.comphenix.protocol</groupId>
             <artifactId>ProtocolLib</artifactId>
-            <version>5.1.0</version>
+            <version>5.3.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
