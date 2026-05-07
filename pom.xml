@@ -34,11 +34,11 @@
     </repositories>
 
     <dependencies>
-        <!-- Paper API -->
+        <!-- Paper API — match your server version exactly -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.20.4-R0.1-SNAPSHOT</version>
+            <version>1.20.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <!-- WorldEdit API -->
@@ -79,7 +79,17 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
+                            <!-- false = don't write a dependency-reduced pom next to the jar -->
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <!-- Explicitly embed main class in MANIFEST so Paper can always find it -->
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>dev.onder1e.buildbattle.BuildBattle</mainClass>
+                                </transformer>
+                            </transformers>
+                            <!-- shadedArtifactAttached=false means the shaded jar IS the primary artifact -->
+                            <!-- The "original-" jar is the pre-shade backup — never deploy that one -->
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
                         </configuration>
                     </execution>
                 </executions>

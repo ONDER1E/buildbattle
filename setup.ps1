@@ -52,10 +52,11 @@ $pom = @'
         </repository>
     </repositories>
     <dependencies>
+        <!-- Paper API — match your server version exactly -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.20.4-R0.1-SNAPSHOT</version>
+            <version>1.20.1-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -92,6 +93,12 @@ $pom = @'
                         <goals><goal>shade</goal></goals>
                         <configuration>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>dev.onder1e.buildbattle.BuildBattle</mainClass>
+                                </transformer>
+                            </transformers>
                         </configuration>
                     </execution>
                 </executions>
@@ -128,12 +135,23 @@ $code = $LASTEXITCODE
 Pop-Location
 
 if ($code -eq 0) {
-    Write-Host ""
-    Write-Host "====================================================" -ForegroundColor Green
-    Write-Host " BUILD SUCCESSFUL!" -ForegroundColor Green
-    Write-Host " JAR: $ProjectRoot\target\BuildBattle-1.0.0.jar" -ForegroundColor Green
-    Write-Host "====================================================" -ForegroundColor Green
-    Write-Host "Copy the JAR + WorldEdit + ProtocolLib into plugins\" -ForegroundColor Yellow
+    $jar = "$ProjectRoot\target\BuildBattle-1.0.0.jar"
+
+    # Verify the shaded JAR actually contains the main class
+    $check = & jar tf $jar 2>$null | Select-String "dev/ak/buildbattle/BuildBattle.class"
+    if ($check) {
+        Write-Host ""
+        Write-Host "====================================================" -ForegroundColor Green
+        Write-Host " BUILD SUCCESSFUL!" -ForegroundColor Green
+        Write-Host " JAR verified — main class found inside." -ForegroundColor Green
+        Write-Host " Copy THIS file to your server:" -ForegroundColor Yellow
+        Write-Host " $jar" -ForegroundColor Cyan
+        Write-Host " DO NOT use original-BuildBattle-1.0.0.jar" -ForegroundColor Red
+        Write-Host "====================================================" -ForegroundColor Green
+    } else {
+        Write-Host "WARNING: JAR built but main class not found inside it!" -ForegroundColor Red
+        Write-Host "The shade plugin may not have run. Check Maven output." -ForegroundColor Red
+    }
 } else {
     Write-Host "Build FAILED. Check Maven output above." -ForegroundColor Red
 }
