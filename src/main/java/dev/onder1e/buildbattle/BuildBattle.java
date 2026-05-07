@@ -158,16 +158,17 @@ public final class BuildBattle extends JavaPlugin {
     // ── Command registration ──────────────────────────────────────────────────
 
     private void registerCommands() {
-        Objects.requireNonNull(getCommand("ready"))         .setExecutor(new ReadyCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_start"))   .setExecutor(new ForceStartCommand(gameManager));
-        Objects.requireNonNull(getCommand("choose"))        .setExecutor(new ChooseCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_choose"))  .setExecutor(new ForceChooseCommand(gameManager));
-        Objects.requireNonNull(getCommand("done"))          .setExecutor(new DoneCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_end"))     .setExecutor(new ForceEndCommand(gameManager));
-        Objects.requireNonNull(getCommand("vote"))          .setExecutor(new VoteCommand(gameManager));
-        Objects.requireNonNull(getCommand("set_game_timer")).setExecutor(new SetGameTimerCommand(this, gameManager));
-        Objects.requireNonNull(getCommand("addword"))       .setExecutor(new AddWordCommand(this, gameManager));
-        Objects.requireNonNull(getCommand("removeword"))    .setExecutor(new RemoveWordCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("ready"))          .setExecutor(new ReadyCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_start"))    .setExecutor(new ForceStartCommand(gameManager));
+        Objects.requireNonNull(getCommand("choose"))         .setExecutor(new ChooseCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_choose"))   .setExecutor(new ForceChooseCommand(gameManager));
+        Objects.requireNonNull(getCommand("done"))           .setExecutor(new DoneCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_end"))      .setExecutor(new ForceEndCommand(gameManager));
+        Objects.requireNonNull(getCommand("vote"))           .setExecutor(new VoteCommand(gameManager));
+        Objects.requireNonNull(getCommand("set_game_timer")) .setExecutor(new SetGameTimerCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("addword"))        .setExecutor(new AddWordCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("removeword"))     .setExecutor(new RemoveWordCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("setplotblock"))   .setExecutor(new SetPlotBlockCommand(gameManager));
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────

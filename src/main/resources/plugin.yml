@@ -13,44 +13,53 @@ commands:
   ready:
     description: Toggle your ready state in the lobby.
     usage: /ready
+    permission: buildbattle.play
+  choose:
+    description: Choose a theme during WORD_SELECTION.
+    usage: /choose <theme>
+    permission: buildbattle.play
+  done:
+    description: Mark your build as done and enter spectator mode.
+    usage: /done
+    permission: buildbattle.play
+  vote:
+    description: Vote for the current build (1-10).
+    usage: /vote <1-10>
+    permission: buildbattle.play
+  setplotblock:
+    description: Change your plot floor block during building.
+    usage: /setplotblock <material>
+    permission: buildbattle.play
   force_start:
-    description: (Admin) Force start the game immediately.
+    description: (Admin) Force start the game.
     usage: /force_start
     permission: buildbattle.admin
-  choose:
-    description: Choose a theme during the WORD_SELECTION phase.
-    usage: /choose <theme>
   force_choose:
     description: (Admin) Force a specific theme.
     usage: /force_choose <theme>
     permission: buildbattle.admin
-  done:
-    description: Mark your build as done and enter spectator mode.
-    usage: /done
   force_end:
-    description: (Admin) Force end the current phase early.
+    description: (Admin) Force end the current phase.
     usage: /force_end
     permission: buildbattle.admin
-  vote:
-    description: Vote for the current build (1-10).
-    usage: /vote <1-10>
   set_game_timer:
-    description: (Admin) Set the game build timer in minutes.
+    description: (Admin) Set the build timer in minutes.
     usage: /set_game_timer <minutes>
     permission: buildbattle.admin
   addword:
-    description: (Admin) Add a theme word to the pool.
+    description: (Admin) Add a theme to the pool.
     usage: /addword <word>
     permission: buildbattle.admin
   removeword:
-    description: (Admin) Remove a theme word from the pool.
+    description: (Admin) Remove a theme from the pool.
     usage: /removeword <word>
     permission: buildbattle.admin
 
 permissions:
-  buildbattle.admin:
-    description: Grants access to all admin commands.
-    default: op
+  # FIX 2: default: true means ALL players can use game commands without op or LuckPerms config.
   buildbattle.play:
-    description: Allows a player to participate in Build Battle.
+    description: Allows a player to use all standard game commands.
     default: true
+  buildbattle.admin:
+    description: Grants access to all admin/override commands.
+    default: op

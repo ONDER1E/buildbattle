@@ -2,7 +2,6 @@ package dev.onder1e.buildbattle.listener;
 
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
-import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -120,15 +119,41 @@ public class PlayerListener implements Listener {
     }
 
     /**
-     * Prevent movement outside the lobby during LOBBY state.
-     * Players in creative/spectator during building are trusted by plot restriction.
+     * FIX 4: During VOTING, spectators are confined to the inner area of the
+     * plot currently being voted on. If they drift outside, teleport them back
+     * to the centre of that plot.
+     *
+     * Also: During LOBBY, prevent players from falling below the lobby floor.
      */
     @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        // During LOBBY, prevent players from leaving the game world
-        if (gameManager.getCurrentState() == GameState.LOBBY) {
+        // Only act if the player actually moved to a new block (perf optimisation)
+        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
+         && event.getFrom().getBlockY() == event.getTo().getBlockY()
+         && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
+
+        if (gameManager.getCurrentState() == dev.onder1e.buildbattle.game.GameState.VOTING) {
+            dev.onder1e.buildbattle.plot.Plot votingPlot = gameManager.getCurrentVotingPlot();
+            if (votingPlot == null) return;
+
+            Location to = event.getTo();
+            int bx = to.getBlockX();
+            int bz = to.getBlockZ();
+
+            // Confine to the TOTAL footprint (inner + iron walls) — gives a bit
+            // of room to look around without letting players wander to other plots
+            if (bx < votingPlot.getTotalMinX() || bx > votingPlot.getTotalMaxX()
+             || bz < votingPlot.getTotalMinZ() || bz > votingPlot.getTotalMaxZ()) {
+                event.setCancelled(true);
+                event.getPlayer().teleport(
+                        votingPlot.getCentreLocation(plugin.getPlotManager().getWorld())
+                                  .add(0, 5, 0));
+            }
+            return;
+        }
+
+        if (gameManager.getCurrentState() == dev.onder1e.buildbattle.game.GameState.LOBBY) {
             if (event.getTo().getY() < 60) {
-                // Player fell below the lobby floor — teleport them back
                 event.setCancelled(true);
                 event.getPlayer().teleport(plugin.getLobbySpawn());
             }
