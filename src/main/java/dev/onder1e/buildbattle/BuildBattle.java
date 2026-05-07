@@ -165,10 +165,13 @@ public final class BuildBattle extends JavaPlugin {
         Objects.requireNonNull(getCommand("done"))           .setExecutor(new DoneCommand(gameManager));
         Objects.requireNonNull(getCommand("force_end"))      .setExecutor(new ForceEndCommand(gameManager));
         Objects.requireNonNull(getCommand("vote"))           .setExecutor(new VoteCommand(gameManager));
-        Objects.requireNonNull(getCommand("set_game_timer")) .setExecutor(new SetGameTimerCommand(this, gameManager));
         Objects.requireNonNull(getCommand("addword"))        .setExecutor(new AddWordCommand(this, gameManager));
         Objects.requireNonNull(getCommand("removeword"))     .setExecutor(new RemoveWordCommand(this, gameManager));
         Objects.requireNonNull(getCommand("setplotblock"))   .setExecutor(new SetPlotBlockCommand(gameManager));
+        PauseResumeCommand pauseResume = new PauseResumeCommand(gameManager);
+        Objects.requireNonNull(getCommand("pause"))          .setExecutor(pauseResume);
+        Objects.requireNonNull(getCommand("resume"))         .setExecutor(pauseResume);
+        Objects.requireNonNull(getCommand("config"))         .setExecutor(new ConfigCommand(gameManager));
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
