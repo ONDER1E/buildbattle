@@ -1,7 +1,6 @@
 package dev.onder1e.buildbattle.plot;
 
 import org.bukkit.Location;
-import org.bukkit.entity.Player;
 
 import java.util.*;
 

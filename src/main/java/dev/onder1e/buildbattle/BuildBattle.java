@@ -11,9 +11,8 @@ import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.WorldCreator;
-import org.bukkit.WorldType;
-import org.bukkit.block.Block;
 import org.bukkit.generator.ChunkGenerator;
+import org.bukkit.generator.WorldInfo;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Objects;
@@ -68,8 +67,11 @@ public final class BuildBattle extends JavaPlugin {
         gameManager   = new GameManager(this, plotManager, packetHandler);
 
         // 6. Register event listeners
+        // PlayerListener uses Bukkit events - registered normally.
         Bukkit.getPluginManager().registerEvents(new PlayerListener(this, gameManager), this);
-        Bukkit.getPluginManager().registerEvents(new WorldEditListener(this, gameManager, plotManager), this);
+        // WorldEditListener uses WorldEdit's internal @Subscribe event bus, NOT Bukkit.
+        // The constructor self-registers with WorldEdit.getInstance().getEventBus().register(this).
+        new WorldEditListener(this, gameManager, plotManager);
 
         // 7. Register commands
         registerCommands();
@@ -96,8 +98,7 @@ public final class BuildBattle extends JavaPlugin {
      */
     private World setupVoidWorld() {
         WorldCreator creator = new WorldCreator("buildbattle")
-                .type(WorldType.FLAT)                        // flat base type
-                .generator(new VoidChunkGenerator())         // overridden to pure void
+                .generator(new VoidChunkGenerator())  // all chunks are pure void air
                 .generateStructures(false);
 
         World world = Bukkit.createWorld(creator);
@@ -106,7 +107,7 @@ public final class BuildBattle extends JavaPlugin {
         // Clear default rules that interfere with gameplay
         world.setGameRule(org.bukkit.GameRule.DO_DAYLIGHT_CYCLE, false);
         world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
-        world.setGameRule(org.bukkit.GameRule.MOB_SPAWNING, false);
+        world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, true);
         world.setTime(6000); // always noon
 
@@ -181,16 +182,30 @@ public final class BuildBattle extends JavaPlugin {
 
     /**
      * A ChunkGenerator that produces completely empty (void) chunks.
-     * This replaces the flat-world default terrain with nothing.
+     * Uses the modern Paper 1.20 API (generateNoise / generateSurface are no-ops).
      */
     public static class VoidChunkGenerator extends ChunkGenerator {
-        // Returning an empty ChunkData from generateChunkData produces a void chunk.
+        // generateChunkData with BiomeGrid is removed in Paper 1.20.
+        // Override generateNoise with an empty body — the chunk remains all air.
         @Override
-        public ChunkData generateChunkData(World world, java.util.Random random,
-                                           int chunkX, int chunkZ,
-                                           BiomeGrid biome) {
-            // createChunkData returns an all-air ChunkData — perfect void.
-            return createChunkData(world);
+        public void generateNoise(WorldInfo worldInfo, java.util.Random random,
+                                  int chunkX, int chunkZ,
+                                  ChunkData chunkData) {
+            // Intentionally empty: leave every block as AIR to produce a void chunk.
+        }
+
+        @Override
+        public void generateSurface(WorldInfo worldInfo, java.util.Random random,
+                                    int chunkX, int chunkZ,
+                                    ChunkData chunkData) {
+            // Intentionally empty.
+        }
+
+        @Override
+        public void generateBedrock(WorldInfo worldInfo, java.util.Random random,
+                                    int chunkX, int chunkZ,
+                                    ChunkData chunkData) {
+            // Intentionally empty — no bedrock floor.
         }
     }
 }

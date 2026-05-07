@@ -1,17 +1,14 @@
 package dev.onder1e.buildbattle.listener;
 
 import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.bukkit.BukkitPlayer;
 import com.sk89q.worldedit.event.extent.EditSessionEvent;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldedit.extent.AbstractDelegateExtent;
 import com.sk89q.worldedit.extent.Extent;
 import com.sk89q.worldedit.math.BlockVector3;
-import com.sk89q.worldedit.regions.CuboidRegion;
-import com.sk89q.worldedit.regions.Region;
 import com.sk89q.worldedit.util.eventbus.Subscribe;
 import com.sk89q.worldedit.world.block.BlockStateHolder;
-import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
 import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
@@ -25,86 +22,79 @@ import org.bukkit.entity.Player;
  * =================
  * Hooks into WorldEdit's internal event bus (NOT Bukkit events) via @Subscribe.
  *
- * IMPORTANT: This class must be registered with WorldEdit.getInstance().getEventBus(),
- * NOT Bukkit's plugin manager. See BuildBattle#onEnable.
+ * REGISTRATION: The constructor self-registers with
+ *   WorldEdit.getInstance().getEventBus().register(this)
+ * Do NOT pass this to Bukkit's PluginManager — it does not implement Listener.
  *
  * HOW THE MASK WORKS:
  * -------------------
- * Every WorldEdit operation (//set, //gen, //paste, etc.) goes through an
- * EditSession. We intercept the EditSessionEvent.Stage.POST_INIT event to
- * wrap the Extent (the "canvas" WorldEdit writes blocks to) in a custom
- * PlotBoundaryExtent.
- *
- * PlotBoundaryExtent delegates all block-setting operations but first checks
- * if the target BlockVector3 falls within the player's inner plot region.
- * If it does NOT, the block is silently dropped (returns false).
- *
- * This provides HARD LIMITS that cannot be bypassed by:
- *   - //set
- *   - //gen
- *   - //paste
- *   - //copy (reading is fine, pasting is blocked)
- *   - Any other WorldEdit operation that writes blocks
+ * Every WorldEdit operation (//set, //gen, //paste, etc.) creates an EditSession.
+ * We intercept EditSessionEvent to wrap the Extent in a PlotBoundaryExtent
+ * that silently drops block-writes outside the player's inner 160x160 plot area.
  */
 public class WorldEditListener {
 
-    private final BuildBattle  plugin;
-    private final GameManager  gameManager;
-    private final PlotManager  plotManager;
+    private final GameManager gameManager;
+    private final PlotManager plotManager;
 
-    public WorldEditListener(BuildBattle plugin, GameManager gameManager, PlotManager plotManager) {
-        this.plugin      = plugin;
+    public WorldEditListener(dev.onder1e.buildbattle.BuildBattle plugin,
+                             GameManager gameManager,
+                             PlotManager plotManager) {
         this.gameManager = gameManager;
         this.plotManager = plotManager;
 
-        // Register with WorldEdit's internal event bus — NOT Bukkit
+        // Register with WorldEdit's internal event bus — NOT Bukkit's PluginManager.
+        // This class does NOT implement org.bukkit.event.Listener.
         WorldEdit.getInstance().getEventBus().register(this);
     }
 
     /**
-     * Called by WorldEdit for every EditSession created.
+     * Called by WorldEdit for every EditSession that is created.
      *
-     * Stage.POST_INIT is the correct hook point: the session is fully set up
-     * and ready for extent wrapping.
+     * In WorldEdit 7.3+ the Stage inner enum was removed from EditSessionEvent.
+     * We simply always wrap — WorldEdit fires this once per session, so wrapping
+     * is safe and idempotent.
      */
     @Subscribe
     public void onEditSession(EditSessionEvent event) {
         // Only restrict during the BUILDING phase
         if (gameManager.getCurrentState() != GameState.BUILDING) return;
 
-        // Only process events that have an associated Actor (i.e. a player)
+        // Only process events that have an associated Actor (a real player)
         Actor actor = event.getActor();
         if (actor == null || !actor.isPlayer()) return;
 
-        // Resolve the Bukkit Player from the WorldEdit Actor
-        Player player = BukkitAdapter.adapt(actor);
+        // FIX: BukkitAdapter.adapt(Actor) returns CommandSender, not Player.
+        // We must use the BukkitPlayer wrapper type directly to get the Bukkit Player.
+        if (!(actor instanceof BukkitPlayer bukkitPlayer)) return;
+        Player player = bukkitPlayer.getPlayer();
         if (player == null) return;
 
-        // Only apply to players who have a plot
+        // Only apply to players who have an active plot
         Plot plot = plotManager.getPlot(player);
         if (plot == null) return;
 
-        // POST_INIT is where we inject our extent wrapper
-        if (event.getStage() == EditSessionEvent.Stage.POST_INIT) {
-            event.setExtent(new PlotBoundaryExtent(event.getExtent(), plot, player));
-        }
+        // Wrap the extent — all setBlock calls will pass through PlotBoundaryExtent first
+        event.setExtent(new PlotBoundaryExtent(event.getExtent(), plot, player));
     }
 
     // ── Inner class: PlotBoundaryExtent ──────────────────────────────────────
 
     /**
-     * A delegating Extent that silently drops any block-set operation
-     * targeting coordinates OUTSIDE the player's inner plot area.
+     * Delegates all block-write calls to the parent Extent, but silently drops
+     * any write that targets a block coordinate outside the player's inner plot.
      *
-     * y range: 0–255 (full height column is valid within X/Z boundaries)
-     * x range: plot.getInnerMinX() to plot.getInnerMaxX()
-     * z range: plot.getInnerMinZ() to plot.getInnerMaxZ()
+     * Checked bounds (block coordinates):
+     *   X: [plot.getInnerMinX(), plot.getInnerMaxX()]
+     *   Z: [plot.getInnerMinZ(), plot.getInnerMaxZ()]
+     *   Y: unrestricted (full build height allowed within the column)
      */
     private static class PlotBoundaryExtent extends AbstractDelegateExtent {
 
         private final Plot   plot;
         private final Player player;
-        private       int    blockedCount = 0; // for debug/logging
+        /** Track how many blocks were blocked to avoid spamming the player's chat. */
+        private int blockedCount = 0;
 
         PlotBoundaryExtent(Extent parent, Plot plot, Player player) {
             super(parent);
@@ -112,35 +102,29 @@ public class WorldEditListener {
             this.player = player;
         }
 
-        /**
-         * Called for every block write WorldEdit attempts.
-         * Returns true if the block was set, false if it was blocked.
-         */
         @Override
         public <T extends BlockStateHolder<T>> boolean setBlock(
                 BlockVector3 location, T block) throws com.sk89q.worldedit.WorldEditException {
 
-            // Check X and Z bounds (Y is unrestricted within the column)
-            int x = location.getX();
-            int z = location.getZ();
+            // FIX: Use x() and z() (non-deprecated in WE 7.3+)
+            // instead of the removed/deprecated getX() / getZ() methods.
+            int x = location.x();
+            int z = location.z();
 
             if (x < plot.getInnerMinX() || x > plot.getInnerMaxX()
              || z < plot.getInnerMinZ() || z > plot.getInnerMaxZ()) {
 
-                // Silently drop — we only notify the player occasionally
-                // to avoid chat spam (WorldEdit can call this millions of times)
                 blockedCount++;
+                // Notify the player only on the first blocked block to avoid spam
                 if (blockedCount == 1) {
-                    // Use Paper's scheduler to send a chat message safely
                     player.sendMessage(Component.text(
-                            "⚠ WorldEdit blocked: operation exceeds your plot boundary!",
+                            "WorldEdit blocked: operation exceeds your plot boundary!",
                             NamedTextColor.RED));
                 }
-                // Return false = block was NOT set (WorldEdit treats this as a no-op)
+                // Returning false signals WorldEdit the block was not placed
                 return false;
             }
 
-            // Within bounds — delegate to the real extent
             return super.setBlock(location, block);
         }
     }

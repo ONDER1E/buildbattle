@@ -5,7 +5,6 @@ import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
 import com.comphenix.protocol.events.*;
 import dev.onder1e.buildbattle.BuildBattle;
-import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import dev.onder1e.buildbattle.plot.PlotManager;
 import org.bukkit.entity.Player;
@@ -127,7 +126,6 @@ public class PacketHandler {
         List<Plot> allPlots = plotManager.getOrderedPlots();
 
         for (Plot myPlot : allPlots) {
-            Set<Long> ownChunks  = myPlot.getTotalChunkKeys();
             Set<Long> hiddenKeys = new HashSet<>();
 
             // For every OTHER plot, add its total chunk keys to this player's hidden set
