@@ -189,35 +189,36 @@ public class PlotManager {
     // =========================================================================
 
     /**
-     * Destroys all plot chunks reliably and efficiently.
+     * Destroys all plot chunks reliably on Paper 1.20.1.
      *
-     * WHY THE REGION-HEADER EDIT FAILED:
-     * Paper holds open file handles to .mca region files via its own RegionFileCache.
-     * Writing to the header directly races with Paper's cache flush and gets
-     * overwritten. We must work WITH Paper's chunk lifecycle, not around it.
+     * ROOT CAUSE OF PREVIOUS FAILURES:
      *
-     * CORRECT TWO-STEP APPROACH:
+     *  - Direct region file header edit: Paper's RegionFileCache holds open file
+     *    handles and overwrites our edits on its next flush.
      *
-     * Step 1 — Unload all plot chunks with save=false.
-     *   This tells Paper to discard the in-memory chunk data WITHOUT writing it
-     *   to disk. The chunk slot in the region file now contains the OLD data
-     *   (from before the game started — i.e. void/air from the VoidChunkGenerator).
-     *   Paper's RegionFileCache is also released when the chunk unloads.
+     *  - unloadChunk(cx, cz, false): Paper 1.20.1 ignores the save=false flag
+     *    for dirty (modified) chunks as a safety measure and saves them anyway.
      *
-     * Step 2 — Delete .mca region files that are 100% owned by plots.
-     *   Since plots start at x=0 and occupy clean chunk-aligned space, any
-     *   region file whose entire 32×32 chunk grid falls inside our plot footprint
-     *   is safe to delete outright. Deletion is instantaneous.
-     *   For region files that are only PARTIALLY owned (e.g. the lobby shares
-     *   region r.(-1).0), we leave them alone — the unload already discarded
-     *   the in-memory build data and the on-disk data is already void.
+     * SOLUTION — regenerateChunk():
+     *   world.regenerateChunk(cx, cz) replaces the chunk's content in-memory
+     *   and on-disk using the world's ChunkGenerator (our VoidChunkGenerator).
+     *   It is deprecated in newer Paper versions but is the ONLY reliable
+     *   no-NMS approach on 1.20.1 that actually clears the chunk data.
      *
-     * RESULT: next load of any plot chunk hits a missing or freshly-voided
-     * region file → VoidChunkGenerator runs → all air. No block iteration,
-     * no regeneration pipeline, no race conditions.
+     *   We then call world.unloadChunk(cx, cz, false) after regeneration.
+     *   At this point the chunk is no longer dirty (regenerateChunk wrote void
+     *   data to it), so unloadChunk correctly discards the in-memory copy.
      *
-     * Batched at 30 unloads/tick to keep the operation smooth.
+     * PERFORMANCE:
+     *   regenerateChunk on a void world is fast — the generator returns an
+     *   empty ChunkData with no terrain logic. We batch 10 chunks per tick
+     *   (regenerateChunk is heavier than a plain unload) to stay smooth.
+     *
+     * After all chunks are processed we attempt to delete any .mca region
+     * files that are entirely within plot space — this is a bonus cleanup
+     * that removes the now-void region files from disk entirely.
      */
+    @SuppressWarnings("deprecation")
     public void destroyAllPlots(Runnable onComplete) {
         List<Plot> toDestroy = new ArrayList<>(orderedPlots);
         plotsByOwner.clear();
@@ -228,7 +229,7 @@ public class PlotManager {
             return;
         }
 
-        // ── Collect every unique chunk coordinate across all plots ────────────
+        // Collect all unique chunk coordinates
         Map<Long, int[]> chunkCoords = new LinkedHashMap<>();
         for (Plot plot : toDestroy) {
             for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
@@ -238,80 +239,67 @@ public class PlotManager {
             }
         }
 
-        // ── Track which region files are fully owned by plots ─────────────────
-        // A region (rx, rz) covers chunks cx=[rx*32 .. rx*32+31], cz=[rz*32 .. rz*32+31].
-        // If ALL 1024 chunks in that region are in our plot set, we can delete the file.
-        Set<Long> plotChunkKeys = new HashSet<>(chunkCoords.keySet());
-        Set<Long> deletableRegions = new HashSet<>();
-
-        // Group plot chunks by region
-        Map<Long, Set<Long>> regionToChunks = new HashMap<>();
-        for (int[] coord : chunkCoords.values()) {
-            int rx = coord[0] >> 5, rz = coord[1] >> 5;
-            long rk = Plot.chunkKey(rx, rz);
-            regionToChunks.computeIfAbsent(rk, k -> new HashSet<>())
-                          .add(Plot.chunkKey(coord[0], coord[1]));
-        }
-
-        for (Map.Entry<Long, Set<Long>> entry : regionToChunks.entrySet()) {
-            long rk = entry.getKey();
-            // chunkKey: cx in low 32 bits, cz in high 32 bits
-            int rx = (int)(rk & 0xFFFFFFFFL);
-            int rz = (int)(rk >> 32);
-            // Check if all 1024 chunks in this region are plot-owned
-            boolean fullyOwned = true;
-            outer:
-            for (int dx = 0; dx < 32; dx++) {
-                for (int dz = 0; dz < 32; dz++) {
-                    if (!plotChunkKeys.contains(Plot.chunkKey(rx * 32 + dx, rz * 32 + dz))) {
-                        fullyOwned = false;
-                        break outer;
-                    }
-                }
-            }
-            if (fullyOwned) deletableRegions.add(rk);
-        }
-
         List<int[]> coordList = new ArrayList<>(chunkCoords.values());
         File worldFolder = world.getWorldFolder();
-        final int BATCH = 30;
+
+        // Which region files are 100% plot-owned (safe to delete after cleanup)
+        Set<Long> plotChunkKeys = new HashSet<>(chunkCoords.keySet());
+        Set<Long> deletableRegions = new HashSet<>();
+        Map<Long, List<int[]>> regionToChunks = new HashMap<>();
+        for (int[] coord : coordList) {
+            int rx = coord[0] >> 5, rz = coord[1] >> 5;
+            long rk = Plot.chunkKey(rx, rz);
+            regionToChunks.computeIfAbsent(rk, k -> new ArrayList<>()).add(coord);
+        }
+        for (Map.Entry<Long, List<int[]>> e : regionToChunks.entrySet()) {
+            long rk = e.getKey();
+            int rx = (int)(rk & 0xFFFFFFFFL);
+            int rz = (int)(rk >> 32);
+            boolean full = true;
+            outer:
+            for (int dx = 0; dx < 32 && full; dx++)
+                for (int dz = 0; dz < 32 && full; dz++)
+                    if (!plotChunkKeys.contains(Plot.chunkKey(rx * 32 + dx, rz * 32 + dz)))
+                        full = false;
+            if (full) deletableRegions.add(rk);
+        }
+
+        final int BATCH = 10; // regenerateChunk is heavier — keep batches small
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
             int end = Math.min(cursor[0] + BATCH, coordList.size());
-
             for (int i = cursor[0]; i < end; i++) {
                 int cx = coordList.get(i)[0];
                 int cz = coordList.get(i)[1];
 
-                // Step 1: unload with save=false — discards ALL in-memory block changes.
-                // Paper will NOT write the build data to disk.
-                if (world.isChunkLoaded(cx, cz)) {
-                    world.unloadChunk(cx, cz, false);
+                // Ensure the chunk is loaded before we can regenerate it
+                if (!world.isChunkLoaded(cx, cz)) {
+                    world.loadChunk(cx, cz, true);
                 }
-            }
 
+                // Replace chunk content with void (uses our VoidChunkGenerator)
+                world.regenerateChunk(cx, cz);
+
+                // Now safe to unload — chunk is no longer dirty after regeneration
+                world.unloadChunk(cx, cz, false);
+            }
             cursor[0] = end;
 
             if (cursor[0] >= coordList.size()) {
                 task.cancel();
 
-                // Step 2: delete fully-owned .mca region files.
-                // RegionFileCache handles are released once all chunks in the region
-                // are unloaded (which we just did), so deletion is safe now.
+                // Bonus: delete fully-owned region files from disk
                 int deleted = 0;
                 for (long rk : deletableRegions) {
-                    // chunkKey: cx in low 32 bits, cz in high 32 bits
                     int rx = (int)(rk & 0xFFFFFFFFL);
                     int rz = (int)(rk >> 32);
                     File mca = new File(worldFolder, "region/r." + rx + "." + rz + ".mca");
-                    if (mca.exists() && mca.delete()) {
-                        deleted++;
-                    }
+                    if (mca.exists() && mca.delete()) deleted++;
                 }
 
-                plugin.getLogger().info("[PlotManager] Cleanup done — "
-                        + coordList.size() + " chunks unloaded, "
+                plugin.getLogger().info("[PlotManager] Cleanup done: "
+                        + coordList.size() + " chunks regenerated, "
                         + deleted + " region files deleted.");
                 onComplete.run();
             }
