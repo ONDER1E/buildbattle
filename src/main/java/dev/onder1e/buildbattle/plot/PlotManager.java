@@ -288,18 +288,21 @@ public class PlotManager {
             if (cursor[0] >= coordList.size()) {
                 task.cancel();
 
-                // Bonus: delete fully-owned region files from disk
-                int deleted = 0;
+                // Bonus: delete fully-owned region files from disk.
+                // Use int[] so it can be referenced inside the logger lambda.
+                int[] deleted = {0};
                 for (long rk : deletableRegions) {
                     int rx = (int)(rk & 0xFFFFFFFFL);
                     int rz = (int)(rk >> 32);
                     File mca = new File(worldFolder, "region/r." + rx + "." + rz + ".mca");
-                    if (mca.exists() && mca.delete()) deleted++;
+                    if (mca.exists() && mca.delete()) deleted[0]++;
                 }
 
+                final int chunkCount = coordList.size();
+                final int delCount   = deleted[0];
                 plugin.getLogger().info(() -> "[PlotManager] Cleanup done: "
-                        + coordList.size() + " chunks regenerated, "
-                        + deleted + " region files deleted.");
+                        + chunkCount + " chunks regenerated, "
+                        + delCount + " region files deleted.");
                 onComplete.run();
             }
         }, 1L, 1L);
@@ -369,8 +372,9 @@ public class PlotManager {
 
             if (cursor[0] >= coordList.size()) {
                 task.cancel();
-                plugin.getLogger().info("[PlotManager] safeErase complete: "
-                        + coordList.size() + " chunks cleared.");
+                final int count = coordList.size();
+                plugin.getLogger().info(() -> "[PlotManager] safeErase complete: "
+                        + count + " chunks cleared.");
                 onComplete.run();
             }
         }, 1L, 1L);
