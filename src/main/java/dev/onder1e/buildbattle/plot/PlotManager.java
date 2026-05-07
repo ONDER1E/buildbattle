@@ -189,15 +189,34 @@ public class PlotManager {
     // =========================================================================
 
     /**
-     * Destroys all plot chunks by:
-     *  1. Erasing each chunk's entry in the Anvil region file (set offset=0)
-     *     so the chunk is treated as ungenerated. Next load → VoidChunkGenerator
-     *     produces all-air with zero extra work.
-     *  2. Unloading the chunk from memory with save=false (discard in-memory data).
+     * Destroys all plot chunks reliably and efficiently.
      *
-     * This is faster than regenerateChunk() which triggers the full generation
-     * pipeline, and faster than block-by-block air fill.
-     * Batched at 30 chunks/tick for smooth performance.
+     * WHY THE REGION-HEADER EDIT FAILED:
+     * Paper holds open file handles to .mca region files via its own RegionFileCache.
+     * Writing to the header directly races with Paper's cache flush and gets
+     * overwritten. We must work WITH Paper's chunk lifecycle, not around it.
+     *
+     * CORRECT TWO-STEP APPROACH:
+     *
+     * Step 1 — Unload all plot chunks with save=false.
+     *   This tells Paper to discard the in-memory chunk data WITHOUT writing it
+     *   to disk. The chunk slot in the region file now contains the OLD data
+     *   (from before the game started — i.e. void/air from the VoidChunkGenerator).
+     *   Paper's RegionFileCache is also released when the chunk unloads.
+     *
+     * Step 2 — Delete .mca region files that are 100% owned by plots.
+     *   Since plots start at x=0 and occupy clean chunk-aligned space, any
+     *   region file whose entire 32×32 chunk grid falls inside our plot footprint
+     *   is safe to delete outright. Deletion is instantaneous.
+     *   For region files that are only PARTIALLY owned (e.g. the lobby shares
+     *   region r.(-1).0), we leave them alone — the unload already discarded
+     *   the in-memory build data and the on-disk data is already void.
+     *
+     * RESULT: next load of any plot chunk hits a missing or freshly-voided
+     * region file → VoidChunkGenerator runs → all air. No block iteration,
+     * no regeneration pipeline, no race conditions.
+     *
+     * Batched at 30 unloads/tick to keep the operation smooth.
      */
     public void destroyAllPlots(Runnable onComplete) {
         List<Plot> toDestroy = new ArrayList<>(orderedPlots);
@@ -209,7 +228,7 @@ public class PlotManager {
             return;
         }
 
-        // Collect unique chunk coords
+        // ── Collect every unique chunk coordinate across all plots ────────────
         Map<Long, int[]> chunkCoords = new LinkedHashMap<>();
         for (Plot plot : toDestroy) {
             for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
@@ -219,58 +238,84 @@ public class PlotManager {
             }
         }
 
-        List<int[]> coords = new ArrayList<>(chunkCoords.values());
+        // ── Track which region files are fully owned by plots ─────────────────
+        // A region (rx, rz) covers chunks cx=[rx*32 .. rx*32+31], cz=[rz*32 .. rz*32+31].
+        // If ALL 1024 chunks in that region are in our plot set, we can delete the file.
+        Set<Long> plotChunkKeys = new HashSet<>(chunkCoords.keySet());
+        Set<Long> deletableRegions = new HashSet<>();
+
+        // Group plot chunks by region
+        Map<Long, Set<Long>> regionToChunks = new HashMap<>();
+        for (int[] coord : chunkCoords.values()) {
+            int rx = coord[0] >> 5, rz = coord[1] >> 5;
+            long rk = Plot.chunkKey(rx, rz);
+            regionToChunks.computeIfAbsent(rk, k -> new HashSet<>())
+                          .add(Plot.chunkKey(coord[0], coord[1]));
+        }
+
+        for (Map.Entry<Long, Set<Long>> entry : regionToChunks.entrySet()) {
+            long rk = entry.getKey();
+            // chunkKey: cx in low 32 bits, cz in high 32 bits
+            int rx = (int)(rk & 0xFFFFFFFFL);
+            int rz = (int)(rk >> 32);
+            // Check if all 1024 chunks in this region are plot-owned
+            boolean fullyOwned = true;
+            outer:
+            for (int dx = 0; dx < 32; dx++) {
+                for (int dz = 0; dz < 32; dz++) {
+                    if (!plotChunkKeys.contains(Plot.chunkKey(rx * 32 + dx, rz * 32 + dz))) {
+                        fullyOwned = false;
+                        break outer;
+                    }
+                }
+            }
+            if (fullyOwned) deletableRegions.add(rk);
+        }
+
+        List<int[]> coordList = new ArrayList<>(chunkCoords.values());
         File worldFolder = world.getWorldFolder();
         final int BATCH = 30;
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
-            int end = Math.min(cursor[0] + BATCH, coords.size());
+            int end = Math.min(cursor[0] + BATCH, coordList.size());
+
             for (int i = cursor[0]; i < end; i++) {
-                int cx = coords.get(i)[0];
-                int cz = coords.get(i)[1];
+                int cx = coordList.get(i)[0];
+                int cz = coordList.get(i)[1];
 
-                // Erase chunk from region file so it's treated as ungenerated
-                eraseChunkFromRegion(worldFolder, cx, cz);
-
-                // Unload from memory without saving (discard modified data)
+                // Step 1: unload with save=false — discards ALL in-memory block changes.
+                // Paper will NOT write the build data to disk.
                 if (world.isChunkLoaded(cx, cz)) {
                     world.unloadChunk(cx, cz, false);
                 }
             }
+
             cursor[0] = end;
 
-            if (cursor[0] >= coords.size()) {
+            if (cursor[0] >= coordList.size()) {
                 task.cancel();
-                plugin.getLogger().info("[PlotManager] " + coords.size() + " chunks erased.");
+
+                // Step 2: delete fully-owned .mca region files.
+                // RegionFileCache handles are released once all chunks in the region
+                // are unloaded (which we just did), so deletion is safe now.
+                int deleted = 0;
+                for (long rk : deletableRegions) {
+                    // chunkKey: cx in low 32 bits, cz in high 32 bits
+                    int rx = (int)(rk & 0xFFFFFFFFL);
+                    int rz = (int)(rk >> 32);
+                    File mca = new File(worldFolder, "region/r." + rx + "." + rz + ".mca");
+                    if (mca.exists() && mca.delete()) {
+                        deleted++;
+                    }
+                }
+
+                plugin.getLogger().info("[PlotManager] Cleanup done — "
+                        + coordList.size() + " chunks unloaded, "
+                        + deleted + " region files deleted.");
                 onComplete.run();
             }
         }, 1L, 1L);
-    }
-
-    /**
-     * Sets the chunk's entry in its Anvil .mca region file to 0 (ungenerated).
-     *
-     * Anvil region format: the first 4096 bytes are the chunk offset table.
-     * Each chunk has a 4-byte entry at offset ((cx & 31) + (cz & 31) * 32) * 4.
-     * Writing 4 zero bytes marks the chunk as absent — the next load regenerates it.
-     */
-    private void eraseChunkFromRegion(File worldFolder, int cx, int cz) {
-        int regionX = cx >> 5;
-        int regionZ = cz >> 5;
-        File regionFile = new File(worldFolder, "region/r." + regionX + "." + regionZ + ".mca");
-        if (!regionFile.exists()) return;
-
-        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(regionFile, "rw")) {
-            // Each header entry is 4 bytes at index ((cx&31) + (cz&31)*32)*4
-            int headerOffset = ((cx & 31) + (cz & 31) * 32) * 4;
-            raf.seek(headerOffset);
-            raf.writeInt(0); // 0 = chunk not present
-        } catch (java.io.IOException e) {
-            // Fall back: just unload without erasing
-            plugin.getLogger().warning("[PlotManager] Could not erase chunk ("
-                    + cx + "," + cz + ") from region: " + e.getMessage());
-        }
     }
 
     // ── Lookups ───────────────────────────────────────────────────────────────
