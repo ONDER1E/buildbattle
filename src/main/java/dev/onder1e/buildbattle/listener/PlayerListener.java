@@ -2,9 +2,11 @@ package dev.onder1e.buildbattle.listener;
 
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
+import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.Location;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -132,8 +134,8 @@ public class PlayerListener implements Listener {
          && event.getFrom().getBlockY() == event.getTo().getBlockY()
          && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) return;
 
-        if (gameManager.getCurrentState() == dev.onder1e.buildbattle.game.GameState.VOTING) {
-            dev.onder1e.buildbattle.plot.Plot votingPlot = gameManager.getCurrentVotingPlot();
+        if (gameManager.getCurrentState() == GameState.VOTING) {
+            Plot votingPlot = gameManager.getCurrentVotingPlot();
             if (votingPlot == null) return;
 
             Location to = event.getTo();
@@ -152,7 +154,7 @@ public class PlayerListener implements Listener {
             return;
         }
 
-        if (gameManager.getCurrentState() == dev.onder1e.buildbattle.game.GameState.LOBBY) {
+        if (gameManager.getCurrentState() == GameState.LOBBY) {
             if (event.getTo().getY() < 60) {
                 event.setCancelled(true);
                 event.getPlayer().teleport(plugin.getLobbySpawn());
