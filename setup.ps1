@@ -58,10 +58,11 @@ Write-Host "Directory structure created." -ForegroundColor Green
             <version>7.3.0-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <!-- ProtocolLib: hosted on dmulloy2-repo, NOT Maven Central -->
         <dependency>
             <groupId>com.comphenix.protocol</groupId>
             <artifactId>ProtocolLib</artifactId>
-            <version>5.1.0</version>
+            <version>5.3.0</version>
             <scope>provided</scope>
         </dependency>
     </dependencies>
@@ -314,7 +315,7 @@ Write-Host "All Java sources written. Running Maven build..." -ForegroundColor Y
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 Push-Location $ProjectRoot
-mvn clean package -q
+mvn clean package -U -q
 if ($LASTEXITCODE -eq 0) {
     Write-Host ""
     Write-Host "============================================" -ForegroundColor Green
