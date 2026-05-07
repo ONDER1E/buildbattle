@@ -1,0 +1,33 @@
+# BuildBattle Configuration
+# ----------------------------
+
+# Duration of the building phase in minutes.
+game_timer: 15
+
+# Size of each plot in chunks (each chunk = 16 blocks).
+# A value of 10 means each plot is 160x160 blocks.
+plot_size: 10
+
+# Width of the iron-block buffer wall surrounding each plot, in chunks.
+buffer_size: 2
+
+# Duration of the word selection voting phase in seconds.
+word_selection_timer: 30
+
+# Duration of the voting phase per build in seconds.
+voting_timer: 30
+
+# Minimum number of players required before ready-check starts.
+min_players: 2
+
+# The themes pool. Players vote on one of three randomly selected themes.
+# Add or remove themes using /addword and /removeword commands.
+themes: >
+  spiderman, house, alien, rat, flute, castle, dragon, spaceship, pizza, robot,
+  volcano, jungle, underwater, wizard, pirate, haunted mansion, futuristic city,
+  time machine, dinosaur, treehouse, submarine, black hole, ninja, samurai,
+  candy land, ancient ruins, steam engine, tornado, lighthouse, colosseum,
+  desert island, snow globe, potion shop, giant mushroom, cloud city,
+  laboratory, clockwork, enchanted forest, sunken ship, crystal cave,
+  flying carpet, carnival, ancient egypt, coral reef, polar expedition,
+  neon city, wind mill, chinese dragon, warrior elephant, grand mosque
