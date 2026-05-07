@@ -106,7 +106,7 @@ public class PlotManager {
                     world.getChunkAtAsync(cx, cz).thenAccept(chunk -> {
                         fillChunk(chunk, fp);
                         if (readyChunks.incrementAndGet() == totalChunks) {
-                            plugin.getLogger().info("[PlotManager] "
+                            plugin.getLogger().info(() -> "[PlotManager] "
                                     + orderedPlots.size() + " plots generated.");
                             onComplete.run();
                         }
@@ -256,7 +256,6 @@ public class PlotManager {
             int rx = (int)(rk & 0xFFFFFFFFL);
             int rz = (int)(rk >> 32);
             boolean full = true;
-            outer:
             for (int dx = 0; dx < 32 && full; dx++)
                 for (int dz = 0; dz < 32 && full; dz++)
                     if (!plotChunkKeys.contains(Plot.chunkKey(rx * 32 + dx, rz * 32 + dz)))
@@ -298,7 +297,7 @@ public class PlotManager {
                     if (mca.exists() && mca.delete()) deleted++;
                 }
 
-                plugin.getLogger().info("[PlotManager] Cleanup done: "
+                plugin.getLogger().info(() -> "[PlotManager] Cleanup done: "
                         + coordList.size() + " chunks regenerated, "
                         + deleted + " region files deleted.");
                 onComplete.run();
@@ -306,7 +305,78 @@ public class PlotManager {
         }, 1L, 1L);
     }
 
-    // ── Lookups ───────────────────────────────────────────────────────────────
+    /**
+     * Safe fallback plot erasure using direct block-by-block AIR fill.
+     *
+     * Slower than destroyAllPlots() but guaranteed to visually clear the
+     * build regardless of Paper's chunk save behaviour.
+     * Exposed via /safe_erase_plots for admin use when normal cleanup fails.
+     *
+     * Batched at 2 chunks/tick — each chunk has up to 65536 block sets so
+     * we keep batches small to avoid tick spikes. The operation runs over
+     * several seconds but produces no lag spikes.
+     *
+     * @param onComplete Called on the main thread when done.
+     */
+    public void safeErasePlots(Runnable onComplete) {
+        // Take a snapshot — can be called while orderedPlots is still populated
+        // (admin might call this mid-game as an emergency)
+        List<Plot> toErase = new ArrayList<>(orderedPlots);
+        plotsByOwner.clear();
+        orderedPlots.clear();
+
+        if (toErase.isEmpty()) {
+            plugin.getLogger().info("[PlotManager] safeErase: no plots to erase.");
+            onComplete.run();
+            return;
+        }
+
+        // Collect chunks
+        Map<Long, int[]> chunkCoords = new LinkedHashMap<>();
+        for (Plot plot : toErase) {
+            for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
+                for (int cz = plot.getTotalMinZ() >> 4; cz <= plot.getTotalMaxZ() >> 4; cz++) {
+                    chunkCoords.putIfAbsent(Plot.chunkKey(cx, cz), new int[]{cx, cz});
+                }
+            }
+        }
+
+        List<int[]> coordList = new ArrayList<>(chunkCoords.values());
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
+        final int BATCH = 2; // 2 chunks/tick — each chunk up to 65536 block sets
+        final int[] cursor = {0};
+
+        Bukkit.getScheduler().runTaskTimer(plugin, task -> {
+            int end = Math.min(cursor[0] + BATCH, coordList.size());
+            for (int i = cursor[0]; i < end; i++) {
+                int cx = coordList.get(i)[0];
+                int cz = coordList.get(i)[1];
+                if (!world.isChunkLoaded(cx, cz)) world.loadChunk(cx, cz, true);
+                Chunk chunk = world.getChunkAt(cx, cz);
+                for (int lx = 0; lx < 16; lx++) {
+                    for (int lz = 0; lz < 16; lz++) {
+                        for (int y = minY; y < maxY; y++) {
+                            if (chunk.getBlock(lx, y, lz).getType() != Material.AIR) {
+                                chunk.getBlock(lx, y, lz).setType(Material.AIR, false);
+                            }
+                        }
+                    }
+                }
+                world.unloadChunk(cx, cz, true); // save=true to persist the now-empty chunk
+            }
+            cursor[0] = end;
+
+            if (cursor[0] >= coordList.size()) {
+                task.cancel();
+                plugin.getLogger().info("[PlotManager] safeErase complete: "
+                        + coordList.size() + " chunks cleared.");
+                onComplete.run();
+            }
+        }, 1L, 1L);
+    }
+
+    // ── Lookup helpers ────────────────────────────────────────────────────────
 
     public Plot getPlot(UUID uuid)     { return plotsByOwner.get(uuid); }
     public Plot getPlot(Player player) { return getPlot(player.getUniqueId()); }

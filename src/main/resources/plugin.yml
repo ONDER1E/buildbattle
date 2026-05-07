@@ -10,7 +10,7 @@ description: A production-ready Build Battle plugin
 authors: [ ak ]
 
 commands:
-  # ── Player commands (buildbattle.play — default true, no op needed) ─────────
+  # ── Player commands ──────────────────────────────────────────────────────────
   ready:
     description: Toggle your ready state in the lobby.
     usage: /ready
@@ -32,38 +32,42 @@ commands:
     usage: /setplotblock <material>
     permission: buildbattle.play
 
-  # ── Admin commands (buildbattle.admin — op only) ────────────────────────────
+  # ── Admin commands ───────────────────────────────────────────────────────────
   force_start:
-    description: (Admin) Force start the game.
+    description: Force start the game.
     usage: /force_start
     permission: buildbattle.admin
   force_choose:
-    description: (Admin) Force a specific theme.
+    description: Force a specific theme.
     usage: /force_choose <theme>
     permission: buildbattle.admin
   force_end:
-    description: (Admin) Force end the current phase early.
+    description: Force end the current phase early.
     usage: /force_end
     permission: buildbattle.admin
   pause:
-    description: (Admin) Pause the current phase countdown.
+    description: Pause the current phase countdown.
     usage: /pause
     permission: buildbattle.admin
   resume:
-    description: (Admin) Resume a paused countdown.
+    description: Resume a paused countdown.
     usage: /resume
     permission: buildbattle.admin
   config:
-    description: (Admin) Live-edit config values with instant or staged effect.
+    description: Live-edit config values.
     usage: /config <key> <value>
     permission: buildbattle.admin
   addword:
-    description: (Admin) Add a theme to the pool.
+    description: Add a theme to the pool.
     usage: /addword <word>
     permission: buildbattle.admin
   removeword:
-    description: (Admin) Remove a theme from the pool.
+    description: Remove a theme from the pool.
     usage: /removeword <word>
+    permission: buildbattle.admin
+  safe_erase_plots:
+    description: Emergency block-by-block plot wipe. Use if normal cleanup fails.
+    usage: /safe_erase_plots
     permission: buildbattle.admin
 
 permissions:

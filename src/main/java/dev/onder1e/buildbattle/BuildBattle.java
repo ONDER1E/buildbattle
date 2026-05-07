@@ -172,6 +172,7 @@ public final class BuildBattle extends JavaPlugin {
         Objects.requireNonNull(getCommand("pause"))          .setExecutor(pauseResume);
         Objects.requireNonNull(getCommand("resume"))         .setExecutor(pauseResume);
         Objects.requireNonNull(getCommand("config"))         .setExecutor(new ConfigCommand(gameManager));
+        Objects.requireNonNull(getCommand("safe_erase_plots")).setExecutor(new SafeErasePlotsCommand(this, gameManager));
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
