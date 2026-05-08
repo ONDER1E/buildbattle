@@ -9,22 +9,24 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
 
 import java.util.*;
+import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 /**
- * GameManager — central state machine.
+ * GameManager - central state machine.
  *
  * v1.0.3 additions:
  * ─────────────────
  * PAUSE / RESUME:
- *   pauseGame()  — freezes the active countdown. The BukkitTask is cancelled
+ *   pauseGame()  - freezes the active countdown. The BukkitTask is cancelled
  *                  but remaining seconds are preserved. Players see a pause notice.
- *   resumeGame() — restarts the countdown from where it was paused.
- *   isPaused()   — exposed so commands can give correct feedback.
+ *   resumeGame() - restarts the countdown from where it was paused.
+ *   isPaused()   - exposed so commands can give correct feedback.
  *
  * STAGED CONFIG (/config):
  *   Config changes made mid-game are stored in a "pending" map and applied
@@ -79,7 +81,7 @@ public class GameManager {
         reloadConfig();
     }
 
-    public void reloadConfig() {
+    public final void reloadConfig() {
         buildTimerMinutes    = plugin.getConfig().getInt("game_timer",           15);
         wordSelectionSeconds = plugin.getConfig().getInt("word_selection_timer", 30);
         votingSeconds        = plugin.getConfig().getInt("voting_timer",         30);
@@ -92,7 +94,7 @@ public class GameManager {
     // =========================================================================
 
     /**
-     * Pause the active countdown. Safe to call in any state — if there is no
+     * Pause the active countdown. Safe to call in any state - if there is no
      * active countdown (e.g. during async plot generation) it broadcasts a
      * warning but does nothing harmful.
      */
@@ -140,7 +142,7 @@ public class GameManager {
      * Apply a config key=value change.
      *
      * Keys that only affect future phases (game_timer, word_selection_timer,
-     * voting_timer) are written to disk and flagged as "pending" — they take
+     * voting_timer) are written to disk and flagged as "pending" - they take
      * effect at the next phase that uses them.
      *
      * Keys that affect the current/next lobby state (min_players,
@@ -207,7 +209,7 @@ public class GameManager {
         }
     }
 
-    /** Reload live values from disk — called at each phase entry. */
+    /** Reload live values from disk - called at each phase entry. */
     private void syncConfig() {
         buildTimerMinutes    = plugin.getConfig().getInt("game_timer",           buildTimerMinutes);
         wordSelectionSeconds = plugin.getConfig().getInt("word_selection_timer", wordSelectionSeconds);
@@ -229,18 +231,25 @@ public class GameManager {
     // ── Player join / leave ───────────────────────────────────────────────────
     // =========================================================================
 
+    public static void clearInventory(Player player) {
+        player.getInventory().clear();
+        player.getInventory().setArmorContents(new ItemStack[4]);
+        player.getInventory().setItemInOffHand(null);
+    }
+   
     public void handleJoin(Player player) {
+        clearInventory(player);
         switch (currentState) {
             case LOBBY -> addLobbyPlayer(player);
             case WORD_SELECTION -> {
                 broadcast(Component.text(player.getName()
-                        + " joined — restarting theme vote!", NamedTextColor.YELLOW));
+                        + " joined - restarting theme vote!", NamedTextColor.YELLOW));
                 cancelCountdown();
                 themeVotes.clear(); themeVoters.clear(); themeCandidates.clear();
                 participants.add(player.getUniqueId());
                 readyPlayers.clear();
                 for (Player p : getOnlineParticipants()) {
-                    p.setGameMode(GameMode.ADVENTURE);
+                    p.setGameMode(GameMode.SURVIVAL);
                     p.teleport(plugin.getLobbySpawn());
                 }
                 transitionTo(GameState.LOBBY);
@@ -278,7 +287,7 @@ public class GameManager {
                 if (wasParticipant) {
                     participants.remove(uuid); readyPlayers.remove(uuid); themeVoters.remove(uuid);
                     broadcast(Component.text(player.getName()
-                            + " left during theme vote — resetting to lobby.", NamedTextColor.YELLOW));
+                            + " left during theme vote - resetting to lobby.", NamedTextColor.YELLOW));
                     cancelCountdown();
                     themeVotes.clear(); themeVoters.clear(); themeCandidates.clear();
                     readyPlayers.clear();
@@ -301,7 +310,7 @@ public class GameManager {
 
     private void addLobbyPlayer(Player player) {
         participants.add(player.getUniqueId());
-        player.setGameMode(GameMode.ADVENTURE);
+        player.setGameMode(GameMode.SURVIVAL);
         player.teleport(plugin.getLobbySpawn());
         broadcast(Component.text(player.getName() + " joined! ("
                 + participants.size() + " players)", NamedTextColor.YELLOW));
@@ -369,7 +378,7 @@ public class GameManager {
         }
         broadcast(Component.empty());
         broadcast(Component.text("  /choose <1|2|3>  or  /choose <name>  to vote", NamedTextColor.YELLOW));
-        broadcast(Component.text("  " + wordSelectionSeconds + "s to vote — most votes wins!", NamedTextColor.GRAY));
+        broadcast(Component.text("  " + wordSelectionSeconds + "s to vote - most votes wins!", NamedTextColor.GRAY));
         broadcast(sep());
 
         startCountdown(wordSelectionSeconds, () -> {
@@ -426,8 +435,13 @@ public class GameManager {
 
     public List<String> getThemePool() {
         String raw = plugin.getConfig().getString("themes", "house, castle");
-        return Arrays.stream(raw.split(",")).map(String::trim)
-                .filter(s -> !s.isEmpty()).collect(Collectors.toCollection(ArrayList::new));
+        if (raw == null) {
+            return new ArrayList<>(); 
+        }
+        return Arrays.stream(raw.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(ArrayList::new));
     }
 
     // =========================================================================
@@ -435,11 +449,14 @@ public class GameManager {
     // =========================================================================
 
     private void enterBuilding() {
+        Bukkit.getOnlinePlayers().forEach(p -> {
+            clearInventory(p);
+        });
         syncConfig(); // apply any config changes (e.g. new game_timer)
         cancelCountdown();
         List<Player> activePlayers = getOnlineParticipants();
         if (activePlayers.isEmpty()) {
-            broadcast(Component.text("Not enough players — returning to lobby.", NamedTextColor.RED));
+            broadcast(Component.text("Not enough players - returning to lobby.", NamedTextColor.RED));
             transitionTo(GameState.RESET); return;
         }
 
@@ -461,8 +478,8 @@ public class GameManager {
             broadcast(Component.text("  Time  : " + buildTimerMinutes + " minutes", NamedTextColor.YELLOW));
             broadcast(Component.empty());
             broadcast(Component.text("  Commands:", NamedTextColor.WHITE, TextDecoration.BOLD));
-            broadcast(Component.text("  /done                    — finish early", NamedTextColor.GRAY));
-            broadcast(Component.text("  /setplotblock <material> — change floor block", NamedTextColor.GRAY));
+            broadcast(Component.text("  /done                    - finish early", NamedTextColor.GRAY));
+            broadcast(Component.text("  /setplotblock <material> - change floor block", NamedTextColor.GRAY));
             broadcast(sep());
 
             startCountdown(buildTimerMinutes * 60, () -> {
@@ -483,7 +500,7 @@ public class GameManager {
         player.setGameMode(GameMode.SPECTATOR);
         broadcast(Component.text(player.getName() + " finished building!", NamedTextColor.GREEN));
         if (plotManager.getOrderedPlots().stream().allMatch(Plot::isDone)) {
-            broadcast(Component.text("Everyone is done — starting voting early!", NamedTextColor.GOLD));
+            broadcast(Component.text("Everyone is done - starting voting early!", NamedTextColor.GOLD));
             transitionTo(GameState.VOTING);
         }
     }
@@ -520,7 +537,7 @@ public class GameManager {
         broadcast(sep());
         broadcast(Component.text("           VOTING PHASE", NamedTextColor.GOLD, TextDecoration.BOLD));
         broadcast(sep());
-        broadcast(Component.text("  /vote <1-10> — score the current build", NamedTextColor.YELLOW));
+        broadcast(Component.text("  /vote <1-10> - score the current build", NamedTextColor.YELLOW));
         broadcast(Component.text("  You cannot vote on your own build.", NamedTextColor.GRAY));
         broadcast(sep());
 
@@ -549,7 +566,7 @@ public class GameManager {
         onlineParticipants.forEach(p -> p.teleport(centre));
         packetHandler.refreshVotingChunks(currentPlot, onlineParticipants);
 
-        broadcast(Component.text("  /vote <1-10>  —  " + votingSeconds + "s to vote!", NamedTextColor.YELLOW));
+        broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!", NamedTextColor.YELLOW));
 
         startCountdown(votingSeconds, () -> { votingPlotIndex++; advanceVoting(); });
     }
@@ -606,7 +623,7 @@ public class GameManager {
             String avg  = String.format("%.1f", plot.getAverageScore());
             String pre  = pos <= 3 ? medals[pos-1] + " " : "   ";
             broadcast(Component.text("  " + pre + "#" + pos + "  " + name
-                    + "  —  " + avg + "/10  (" + plot.getVoteCount() + " votes)", NamedTextColor.YELLOW));
+                    + "  -  " + avg + "/10  (" + plot.getVoteCount() + " votes)", NamedTextColor.YELLOW));
             pos++;
         }
 
@@ -633,7 +650,7 @@ public class GameManager {
         currentVotingPlot = null;
         paused = false;
 
-        broadcast(Component.text("Resetting — see you in the lobby!", NamedTextColor.GRAY));
+        broadcast(Component.text("Resetting - see you in the lobby!", NamedTextColor.GRAY));
 
         Set<UUID> allReturning = new LinkedHashSet<>();
         allReturning.addAll(participants);
@@ -660,7 +677,7 @@ public class GameManager {
     // =========================================================================
 
     public void transitionTo(GameState newState) {
-        plugin.getLogger().info("[GameManager] " + currentState + " -> " + newState);
+        plugin.getLogger().log(Level.INFO, "[GameManager] {0} -> {1}", new Object[]{currentState, newState});
         paused = false; // always un-pause on state change
         currentState = newState;
         switch (newState) {
@@ -674,11 +691,14 @@ public class GameManager {
     }
 
     private void enterLobby() {
+        Bukkit.getOnlinePlayers().forEach(p -> {
+            clearInventory(p);
+        });
         syncConfig();
         broadcast(sep());
-        broadcast(Component.text("        BUILD BATTLE  —  LOBBY", NamedTextColor.GOLD, TextDecoration.BOLD));
+        broadcast(Component.text("        BUILD BATTLE  -  LOBBY", NamedTextColor.GOLD, TextDecoration.BOLD));
         broadcast(sep());
-        broadcast(Component.text("  /ready — toggle your ready status", NamedTextColor.YELLOW));
+        broadcast(Component.text("  /ready - toggle your ready status", NamedTextColor.YELLOW));
         broadcast(Component.text("  Waiting for " + minPlayers + "+ players...", NamedTextColor.GRAY));
         broadcast(sep());
     }
@@ -686,7 +706,7 @@ public class GameManager {
     private void sendLobbyHelp(Player player) {
         player.sendMessage(sep());
         player.sendMessage(Component.text("  Welcome to Build Battle!", NamedTextColor.GOLD, TextDecoration.BOLD));
-        player.sendMessage(Component.text("  /ready — toggle your ready status", NamedTextColor.YELLOW));
+        player.sendMessage(Component.text("  /ready - toggle your ready status", NamedTextColor.YELLOW));
         player.sendMessage(sep());
     }
 

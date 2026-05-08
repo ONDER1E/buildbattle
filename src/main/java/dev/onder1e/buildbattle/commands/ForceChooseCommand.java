@@ -7,7 +7,7 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /force_choose <theme> — (Admin) Override and forcibly set the theme,
+ * /force_choose <theme> - (Admin) Override and forcibly set the theme,
  * skipping the vote entirely and advancing immediately to BUILDING.
  *
  * Permission: buildbattle.admin

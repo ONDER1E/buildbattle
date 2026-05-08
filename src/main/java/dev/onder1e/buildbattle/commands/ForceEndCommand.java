@@ -5,7 +5,7 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /force_end — (Admin) Immediately ends the CURRENT active phase.
+ * /force_end - (Admin) Immediately ends the CURRENT active phase.
  *
  * Behaviour per phase:
  *   WORD_SELECTION → Picks the current winner and starts BUILDING.

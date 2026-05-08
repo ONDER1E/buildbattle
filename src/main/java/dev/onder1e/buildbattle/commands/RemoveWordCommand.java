@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
 import java.util.List;
 
 /**
- * /removeword <theme> — (Admin) Remove a theme from the pool.
+ * /removeword <theme> - (Admin) Remove a theme from the pool.
  *
  * Immediately persists the updated list to config.yml.
  * Requires at least 3 themes to remain in the pool (to support WORD_SELECTION).
@@ -45,7 +45,7 @@ public class RemoveWordCommand implements CommandExecutor {
         // Guard: must retain at least 3 themes for voting to function
         if (pool.size() <= 3) {
             player.sendMessage(Component.text(
-                    "Cannot remove theme — pool must contain at least 3 themes.", NamedTextColor.RED));
+                    "Cannot remove theme - pool must contain at least 3 themes.", NamedTextColor.RED));
             return true;
         }
 

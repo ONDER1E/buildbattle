@@ -1,216 +1,225 @@
 package dev.onder1e.buildbattle;
 
-import dev.onder1e.buildbattle.commands.*;
+import java.util.Objects;
+
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.WorldCreator;
+import org.bukkit.entity.Player;
+import org.bukkit.generator.ChunkGenerator;
+import org.bukkit.generator.WorldInfo;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import dev.onder1e.buildbattle.commands.AddWordCommand;
+import dev.onder1e.buildbattle.commands.ChooseCommand;
+import dev.onder1e.buildbattle.commands.ConfigCommand;
+import dev.onder1e.buildbattle.commands.DoneCommand;
+import dev.onder1e.buildbattle.commands.ForceChooseCommand;
+import dev.onder1e.buildbattle.commands.ForceEndCommand;
+import dev.onder1e.buildbattle.commands.ForceStartCommand;
+import dev.onder1e.buildbattle.commands.PauseResumeCommand;
+import dev.onder1e.buildbattle.commands.ReadyCommand;
+import dev.onder1e.buildbattle.commands.RemoveWordCommand;
+import dev.onder1e.buildbattle.commands.SafeErasePlotsCommand;
+import dev.onder1e.buildbattle.commands.SetPlotBlockCommand;
+import dev.onder1e.buildbattle.commands.VoteCommand;
 import dev.onder1e.buildbattle.game.GameManager;
 import dev.onder1e.buildbattle.listener.PlayerListener;
 import dev.onder1e.buildbattle.listener.WorldEditListener;
 import dev.onder1e.buildbattle.packet.PacketHandler;
 import dev.onder1e.buildbattle.plot.PlotManager;
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.World;
-import org.bukkit.WorldCreator;
-import org.bukkit.generator.ChunkGenerator;
-import org.bukkit.generator.WorldInfo;
-import org.bukkit.plugin.java.JavaPlugin;
-
-import java.util.Objects;
 
 /**
- * BuildBattle - Main Plugin Entry Point
- *
- * Lifecycle:
- *  onEnable  -> initialise void world, place lobby barrier box, wire up all managers.
- *  onDisable -> clean up plots, unregister packet handler.
+ * BuildBattle - Main plugin entry point.
  */
 public final class BuildBattle extends JavaPlugin {
 
-    // ── Singleton access ──────────────────────────────────────────────────────
     private static BuildBattle instance;
 
-    // ── Core managers ────────────────────────────────────────────────────────
-    private PlotManager  plotManager;
-    private GameManager  gameManager;
+    private PlotManager   plotManager;
+    private GameManager   gameManager;
     private PacketHandler packetHandler;
+    
+    /**
+     * Stored to resolve "New instance ignored" hint.
+     */
+    @SuppressWarnings("unused")
+    private WorldEditListener worldEditListener;
 
-    // ── Lobby constants ───────────────────────────────────────────────────────
-    /** Side length (blocks) of the hollow barrier-box lobby. */
-    public static final int LOBBY_SIZE      = 20;
-    /** Y coordinate of the lobby floor (inside the box). */
-    public static final int LOBBY_FLOOR_Y   = 64;
-    /** The exact spawn Location set inside the lobby. */
+    // ── Lobby dimensions ─────────────────────────────────────────────────────────
+    public static final int LOBBY_SIZE    = 60;
+    public static final int LOBBY_HEIGHT  = 15;
+    public static final int LOBBY_FLOOR_Y = 64;
+
     private Location lobbySpawn;
 
     @Override
     public void onEnable() {
         instance = this;
-
-        // 1. Save / load configuration
         saveDefaultConfig();
 
-        // 2. Set up the void game world
         World gameWorld = setupVoidWorld();
-
-        // 3. Build the barrier lobby at world origin
         lobbySpawn = buildLobby(gameWorld);
 
-        // 4. Teleport all currently online players to the lobby
         Bukkit.getOnlinePlayers().forEach(p -> {
-            p.setGameMode(GameMode.ADVENTURE);
+            clearInventory(p);
+            p.setGameMode(GameMode.SURVIVAL);
             p.teleport(lobbySpawn);
         });
 
-        // 5. Initialise managers (order matters)
         plotManager   = new PlotManager(this, gameWorld);
         packetHandler = new PacketHandler(this);
         gameManager   = new GameManager(this, plotManager, packetHandler);
 
-        // 6. Register event listeners
-        // PlayerListener uses Bukkit events - registered normally.
         Bukkit.getPluginManager().registerEvents(new PlayerListener(this, gameManager), this);
-        // WorldEditListener uses WorldEdit's internal @Subscribe event bus, NOT Bukkit.
-        // The constructor self-registers with WorldEdit.getInstance().getEventBus().register(this).
-        new WorldEditListener(this, gameManager, plotManager);
+        
+        // Assigned to field to resolve diagnostic hints
+        this.worldEditListener = WorldEditListener.register(gameManager, plotManager);
 
-        // 7. Register commands
         registerCommands();
-
         getLogger().info("BuildBattle enabled successfully!");
     }
 
     @Override
     public void onDisable() {
-        if (gameManager != null) {
-            gameManager.forceReset();
-        }
-        if (packetHandler != null) {
-            packetHandler.unregister();
-        }
+        if (gameManager   != null) gameManager.forceReset();
+        if (packetHandler != null) packetHandler.unregister();
         getLogger().info("BuildBattle disabled.");
     }
 
     // ── World setup ───────────────────────────────────────────────────────────
 
-    /**
-     * Creates (or loads) the dedicated "buildbattle" world using a void chunk
-     * generator so there is no terrain — only what we place ourselves.
-     */
     private World setupVoidWorld() {
         WorldCreator creator = new WorldCreator("buildbattle")
-                .generator(new VoidChunkGenerator())  // all chunks are pure void air
+                .generator(new VoidChunkGenerator())
                 .generateStructures(false);
-
         World world = Bukkit.createWorld(creator);
         Objects.requireNonNull(world, "Failed to create/load buildbattle world!");
-
-        // Clear default rules that interfere with gameplay
         world.setGameRule(org.bukkit.GameRule.DO_DAYLIGHT_CYCLE, false);
         world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, true);
-        world.setTime(6000); // always noon
-
+        world.setPVP(true);
+        world.setTime(6000);
         return world;
     }
 
-    /**
-     * Constructs a hollow 20×20×10 barrier-block box at y=64 at the world
-     * origin and returns the spawn Location inside it.
-     *
-     * The lobby is placed NEGATIVE on the X axis so it does not overlap with
-     * plot space which extends in the POSITIVE X direction.
-     */
     private Location buildLobby(World world) {
-        // Lobby origin: centre it at x= -50 so plots (x≥0) are never touching it
-        int ox = -LOBBY_SIZE / 2 - 30; // e.g. -40
+        int ox = -(LOBBY_SIZE + 100);
+        int oz = -(LOBBY_SIZE / 2);
         int oy = LOBBY_FLOOR_Y;
-        int oz = -LOBBY_SIZE / 2;
-        int w  = LOBBY_SIZE;
-        int h  = 10; // wall height
+        int s  = LOBBY_SIZE;
+        int h  = LOBBY_HEIGHT;
 
-        for (int x = ox; x <= ox + w; x++) {
-            for (int z = oz; z <= oz + w; z++) {
-                for (int y = oy; y <= oy + h; y++) {
-                    boolean isWall = (x == ox || x == ox + w || z == oz || z == oz + w
-                            || y == oy || y == oy + h);
-                    if (isWall) {
-                        world.getBlockAt(x, y, z)
-                             .setType(org.bukkit.Material.BARRIER);
-                    }
-                }
+        // Glass floor and barriers
+        for (int x = ox; x <= ox + s; x++) {
+            for (int z = oz; z <= oz + s; z++) {
+                world.getBlockAt(x, oy, z).setType(Material.GLASS, false);
+                world.getBlockAt(x, oy - 1, z).setType(Material.BARRIER, false);
+                world.getBlockAt(x, oy + h + 1, z).setType(Material.BARRIER, false);
             }
         }
 
-        // Floor decoration (glass so it looks nice)
-        for (int x = ox + 1; x < ox + w; x++) {
-            for (int z = oz + 1; z < oz + w; z++) {
-                world.getBlockAt(x, oy, z)
-                     .setType(org.bukkit.Material.GLASS);
+        // Glass walls
+        for (int y = oy + 1; y <= oy + h; y++) {
+            for (int x = ox; x <= ox + s; x++) {
+                world.getBlockAt(x, y, oz).setType(Material.GLASS, false);
+                world.getBlockAt(x, y, oz + s).setType(Material.GLASS, false);
+            }
+            for (int z = oz + 1; z < oz + s; z++) {
+                world.getBlockAt(ox, y, z).setType(Material.GLASS, false);
+                world.getBlockAt(ox + s, y, z).setType(Material.GLASS, false);
             }
         }
 
-        Location spawn = new Location(world, ox + w / 2.0 + 0.5, oy + 1, oz + w / 2.0 + 0.5);
+        // Iron bar perimeter
+        for (int x = ox; x <= ox + s; x++) {
+            world.getBlockAt(x, oy, oz).setType(Material.IRON_BARS, false);
+            world.getBlockAt(x, oy, oz + s).setType(Material.IRON_BARS, false);
+        }
+        for (int z = oz + 1; z < oz + s; z++) {
+            world.getBlockAt(ox, oy, z).setType(Material.IRON_BARS, false);
+            world.getBlockAt(ox + s, oy, z).setType(Material.IRON_BARS, false);
+        }
+
+        Location spawn = new Location(world, ox + s / 2.0 + 0.5, oy + 1, oz + s / 2.0 + 0.5);
         world.setSpawnLocation(spawn);
         return spawn;
+    }
+
+    public boolean isInsideLobby(Location loc) {
+        // Check if the world is the buildbattle world
+        if (!loc.getWorld().getName().equals("buildbattle")) return false;
+
+        int x = loc.getBlockX();
+        int y = loc.getBlockY();
+        int z = loc.getBlockZ();
+
+        int ox = -(LOBBY_SIZE + 100);
+        int oz = -(LOBBY_SIZE / 2);
+
+        // Returns true if the block is part of the floor, walls, or ceiling box
+        return x >= ox && x <= ox + LOBBY_SIZE &&
+            z >= oz && z <= oz + LOBBY_SIZE &&
+            y >= LOBBY_FLOOR_Y - 1 && y <= LOBBY_FLOOR_Y + LOBBY_HEIGHT + 1;
+    }
+
+    // ── Inventory management ──────────────────────────────────────────────────
+
+    public static void clearInventory(Player player) {
+        player.getInventory().clear();
+        player.getInventory().setArmorContents(new ItemStack[4]);
+        player.getInventory().setItemInOffHand(null);
     }
 
     // ── Command registration ──────────────────────────────────────────────────
 
     private void registerCommands() {
-        Objects.requireNonNull(getCommand("ready"))          .setExecutor(new ReadyCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_start"))    .setExecutor(new ForceStartCommand(gameManager));
-        Objects.requireNonNull(getCommand("choose"))         .setExecutor(new ChooseCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_choose"))   .setExecutor(new ForceChooseCommand(gameManager));
-        Objects.requireNonNull(getCommand("done"))           .setExecutor(new DoneCommand(gameManager));
-        Objects.requireNonNull(getCommand("force_end"))      .setExecutor(new ForceEndCommand(gameManager));
-        Objects.requireNonNull(getCommand("vote"))           .setExecutor(new VoteCommand(gameManager));
-        Objects.requireNonNull(getCommand("addword"))        .setExecutor(new AddWordCommand(this, gameManager));
-        Objects.requireNonNull(getCommand("removeword"))     .setExecutor(new RemoveWordCommand(this, gameManager));
-        Objects.requireNonNull(getCommand("setplotblock"))   .setExecutor(new SetPlotBlockCommand(gameManager));
+        Objects.requireNonNull(getCommand("ready")).setExecutor(new ReadyCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_start")).setExecutor(new ForceStartCommand(gameManager));
+        Objects.requireNonNull(getCommand("choose")).setExecutor(new ChooseCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_choose")).setExecutor(new ForceChooseCommand(gameManager));
+        Objects.requireNonNull(getCommand("done")).setExecutor(new DoneCommand(gameManager));
+        Objects.requireNonNull(getCommand("force_end")).setExecutor(new ForceEndCommand(gameManager));
+        Objects.requireNonNull(getCommand("vote")).setExecutor(new VoteCommand(gameManager));
+        Objects.requireNonNull(getCommand("addword")).setExecutor(new AddWordCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("removeword")).setExecutor(new RemoveWordCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("setplotblock")).setExecutor(new SetPlotBlockCommand(gameManager));
         PauseResumeCommand pauseResume = new PauseResumeCommand(gameManager);
-        Objects.requireNonNull(getCommand("pause"))          .setExecutor(pauseResume);
-        Objects.requireNonNull(getCommand("resume"))         .setExecutor(pauseResume);
-        Objects.requireNonNull(getCommand("config"))         .setExecutor(new ConfigCommand(gameManager));
+        Objects.requireNonNull(getCommand("pause")).setExecutor(pauseResume);
+        Objects.requireNonNull(getCommand("resume")).setExecutor(pauseResume);
+        Objects.requireNonNull(getCommand("config")).setExecutor(new ConfigCommand(gameManager));
         Objects.requireNonNull(getCommand("safe_erase_plots")).setExecutor(new SafeErasePlotsCommand(this, gameManager));
     }
+
+    // ── Lobby bounds ──────────────────────────────────────────────────────────
+
+    public int getLobbyMinX() { return -(LOBBY_SIZE + 100) + 1; }
+    public int getLobbyMaxX() { return getLobbyMinX() + LOBBY_SIZE - 1; }
+    public int getLobbyMinZ() { return -(LOBBY_SIZE / 2) + 1; }
+    public int getLobbyMaxZ() { return getLobbyMinZ() + LOBBY_SIZE - 1; }
+    public int getLobbyCeilY() { return LOBBY_FLOOR_Y + LOBBY_HEIGHT; }
 
     // ── Accessors ─────────────────────────────────────────────────────────────
 
     public static BuildBattle getInstance() { return instance; }
-    public PlotManager  getPlotManager()    { return plotManager; }
-    public GameManager  getGameManager()    { return gameManager; }
+    public PlotManager   getPlotManager()   { return plotManager; }
+    public GameManager   getGameManager()   { return gameManager; }
     public PacketHandler getPacketHandler() { return packetHandler; }
-    public Location     getLobbySpawn()     { return lobbySpawn; }
+    public Location      getLobbySpawn()    { return lobbySpawn; }
 
-    // ── Void chunk generator (inner class for simplicity) ─────────────────────
+    // ── Void chunk generator ─────────────────────────────────────────────────
 
-    /**
-     * A ChunkGenerator that produces completely empty (void) chunks.
-     * Uses the modern Paper 1.20 API (generateNoise / generateSurface are no-ops).
-     */
     public static class VoidChunkGenerator extends ChunkGenerator {
-        // generateChunkData with BiomeGrid is removed in Paper 1.20.
-        // Override generateNoise with an empty body — the chunk remains all air.
         @Override
-        public void generateNoise(WorldInfo worldInfo, java.util.Random random,
-                                  int chunkX, int chunkZ,
-                                  ChunkData chunkData) {
-            // Intentionally empty: leave every block as AIR to produce a void chunk.
-        }
-
+        public void generateNoise(WorldInfo w, java.util.Random r, int cx, int cz, ChunkData d) {}
         @Override
-        public void generateSurface(WorldInfo worldInfo, java.util.Random random,
-                                    int chunkX, int chunkZ,
-                                    ChunkData chunkData) {
-            // Intentionally empty.
-        }
-
+        public void generateSurface(WorldInfo w, java.util.Random r, int cx, int cz, ChunkData d) {}
         @Override
-        public void generateBedrock(WorldInfo worldInfo, java.util.Random random,
-                                    int chunkX, int chunkZ,
-                                    ChunkData chunkData) {
-            // Intentionally empty — no bedrock floor.
-        }
+        public void generateBedrock(WorldInfo w, java.util.Random r, int cx, int cz, ChunkData d) {}
     }
 }

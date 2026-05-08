@@ -22,9 +22,8 @@ import org.bukkit.entity.Player;
  * =================
  * Hooks into WorldEdit's internal event bus (NOT Bukkit events) via @Subscribe.
  *
- * REGISTRATION: The constructor self-registers with
- *   WorldEdit.getInstance().getEventBus().register(this)
- * Do NOT pass this to Bukkit's PluginManager — it does not implement Listener.
+ * REGISTRATION: Use WorldEditListener.register(...) to initialize.
+ * Do NOT pass this to Bukkit's PluginManager - it does not implement Listener.
  *
  * HOW THE MASK WORKS:
  * -------------------
@@ -37,22 +36,27 @@ public class WorldEditListener {
     private final GameManager gameManager;
     private final PlotManager plotManager;
 
-    public WorldEditListener(dev.onder1e.buildbattle.BuildBattle plugin,
-                             GameManager gameManager,
-                             PlotManager plotManager) {
+    private WorldEditListener(GameManager gameManager,
+                               PlotManager plotManager) {
         this.gameManager = gameManager;
         this.plotManager = plotManager;
+    }
 
-        // Register with WorldEdit's internal event bus — NOT Bukkit's PluginManager.
-        // This class does NOT implement org.bukkit.event.Listener.
-        WorldEdit.getInstance().getEventBus().register(this);
+    /**
+     * Static factory method to safely construct and register the listener.
+     * This avoids "Leaking this in constructor" warnings.
+     */
+    public static WorldEditListener register(GameManager gameManager, PlotManager plotManager) {
+        WorldEditListener listener = new WorldEditListener(gameManager, plotManager);
+        WorldEdit.getInstance().getEventBus().register(listener);
+        return listener;
     }
 
     /**
      * Called by WorldEdit for every EditSession that is created.
      *
      * In WorldEdit 7.3+ the Stage inner enum was removed from EditSessionEvent.
-     * We simply always wrap — WorldEdit fires this once per session, so wrapping
+     * We simply always wrap - WorldEdit fires this once per session, so wrapping
      * is safe and idempotent.
      */
     @Subscribe
@@ -74,7 +78,7 @@ public class WorldEditListener {
         Plot plot = plotManager.getPlot(player);
         if (plot == null) return;
 
-        // Wrap the extent — all setBlock calls will pass through PlotBoundaryExtent first
+        // Wrap the extent - all setBlock calls will pass through PlotBoundaryExtent first
         event.setExtent(new PlotBoundaryExtent(event.getExtent(), plot, player));
     }
 
@@ -85,9 +89,9 @@ public class WorldEditListener {
      * any write that targets a block coordinate outside the player's inner plot.
      *
      * Checked bounds (block coordinates):
-     *   X: [plot.getInnerMinX(), plot.getInnerMaxX()]
-     *   Z: [plot.getInnerMinZ(), plot.getInnerMaxZ()]
-     *   Y: unrestricted (full build height allowed within the column)
+     * X: [plot.getInnerMinX(), plot.getInnerMaxX()]
+     * Z: [plot.getInnerMinZ(), plot.getInnerMaxZ()]
+     * Y: unrestricted (full build height allowed within the column)
      */
     private static class PlotBoundaryExtent extends AbstractDelegateExtent {
 

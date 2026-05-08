@@ -7,11 +7,11 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /choose <theme|index> — Player votes for a theme during WORD_SELECTION.
+ * /choose <theme|index> - Player votes for a theme during WORD_SELECTION.
  *
  * Accepts:
- *   /choose 1         — vote for option 1 (numeric index)
- *   /choose spiderman — vote by name (partial match supported)
+ *   /choose 1         - vote for option 1 (numeric index)
+ *   /choose spiderman - vote by name (partial match supported)
  */
 public class ChooseCommand implements CommandExecutor {
 

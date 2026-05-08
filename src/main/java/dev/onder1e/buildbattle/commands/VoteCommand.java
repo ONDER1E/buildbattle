@@ -25,12 +25,13 @@ public class VoteCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage("Only players can use this command.");
+        if (sender == null || !(sender instanceof Player player)) {
+            if (sender != null) {
+                sender.sendMessage("Only players can use this command.");
+            }
             return true;
         }
 
-        // Validate argument presence
         if (args.length < 1) {
             player.sendMessage(Component.text("Usage: /vote <1-10>", NamedTextColor.RED));
             return true;

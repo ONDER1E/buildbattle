@@ -1,19 +1,24 @@
 package dev.onder1e.buildbattle.listener;
 
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
+
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
 import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.Listener;
-import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPlaceEvent;
-import org.bukkit.event.player.*;
 
 /**
  * PlayerListener
@@ -69,6 +74,17 @@ public class PlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
+        if (plugin.isInsideLobby(event.getBlock().getLocation())) {
+            event.setCancelled(true);
+            return;
+        }
+
+        // Existing Barrier protection
+        if (event.getBlock().getType() == Material.BARRIER) {
+            event.setCancelled(true);
+            return;
+        }
+
         // Barrier blocks (lobby walls) are always indestructible
         if (event.getBlock().getType() == Material.BARRIER) {
             event.setCancelled(true);
@@ -125,6 +141,25 @@ public class PlayerListener implements Listener {
             event.getPlayer().sendMessage(
                     Component.text("You cannot build outside your plot!", NamedTextColor.RED));
         }
+    }
+
+    // ── Respawn ──────────────────────────────────────────────────────────────
+
+    @EventHandler(priority = EventPriority.HIGHEST)
+    public void onPlayerRespawn(PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        GameState state = gameManager.getCurrentState();
+
+        Location respawnLoc = plugin.getLobbySpawn();
+
+        if (state == GameState.BUILDING) {
+            Plot plot = plugin.getPlotManager().getPlot(player);
+            if (plot != null) {
+                respawnLoc = plot.getCentreLocation(plugin.getPlotManager().getWorld());
+            }
+        }
+        
+        event.setRespawnLocation(respawnLoc);
     }
 
     // ── Movement ──────────────────────────────────────────────────────────────

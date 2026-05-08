@@ -7,7 +7,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 /**
- * /ready — Toggles the calling player's ready status in the LOBBY.
+ * /ready - Toggles the calling player's ready status in the LOBBY.
  * When all participants are ready, the game automatically advances to WORD_SELECTION.
  */
 public class ReadyCommand implements CommandExecutor {
@@ -20,7 +20,7 @@ public class ReadyCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        // Command requires a player — not callable from console
+        // Command requires a player - not callable from console
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Only players can use this command.");
             return true;

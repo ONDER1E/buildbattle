@@ -10,6 +10,7 @@ import dev.onder1e.buildbattle.plot.PlotManager;
 import org.bukkit.entity.Player;
 
 import java.util.*;
+import java.util.logging.Level;
 
 /**
  * PacketHandler
@@ -44,7 +45,7 @@ import java.util.*;
 public class PacketHandler {
 
     private final BuildBattle plugin;
-    private ProtocolManager protocolManager;
+    private final ProtocolManager protocolManager;
     private PacketAdapter chunkAdapter;
 
     /**
@@ -96,7 +97,7 @@ public class PacketHandler {
                 // Check if this chunk belongs to another player's plot
                 Set<Long> hidden = hiddenChunksPerPlayer.get(player.getUniqueId());
                 if (hidden != null && hidden.contains(key)) {
-                    // CANCEL the real chunk packet — client receives nothing.
+                    // CANCEL the real chunk packet - client receives nothing.
                     // The client will see a void/air area at this position because
                     // it has no chunk data loaded for it.
                     event.setCancelled(true);
@@ -137,8 +138,7 @@ public class PacketHandler {
             hiddenChunksPerPlayer.put(myPlot.getOwnerUUID(), hiddenKeys);
         }
 
-        plugin.getLogger().info("[PacketHandler] Building filter ENABLED for "
-                + allPlots.size() + " plots.");
+        plugin.getLogger().log(Level.INFO, "[PacketHandler] Building filter ENABLED for {0} plots.", allPlots.size());
     }
 
     /**
@@ -169,8 +169,8 @@ public class PacketHandler {
             }
         }
 
-        plugin.getLogger().info("[PacketHandler] Voting refresh sent for plot "
-                + plot.getIndex() + " (owner " + plot.getOwnerUUID() + ").");
+        plugin.getLogger().log(Level.INFO, "[PacketHandler] Voting refresh sent for plot {0} (owner {1}).", 
+    new Object[]{plot.getIndex(), plot.getOwnerUUID()});
     }
 
     /**

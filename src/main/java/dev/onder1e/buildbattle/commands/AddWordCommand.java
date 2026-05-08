@@ -10,7 +10,7 @@ import org.bukkit.entity.Player;
 import java.util.List;
 
 /**
- * /addword <theme> — (Admin) Add a new theme to the pool.
+ * /addword <theme> - (Admin) Add a new theme to the pool.
  *
  * Immediately persists the updated list to config.yml.
  * Supports multi-word themes (e.g. /addword haunted mansion).

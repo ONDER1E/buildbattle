@@ -8,7 +8,7 @@ import java.util.*;
  * Immutable value object representing one Build Battle plot.
  *
  * A plot consists of:
- *   - An inner 160×160 (10-chunk) grass floor at y=64.
+ *   - An inner 160Ã-160 (10-chunk) grass floor at y=64.
  *   - A 2-chunk-wide iron-block surrounding wall from y=0 to y=255.
  *
  * Coordinates are stored at the BLOCK level (not chunk level).
@@ -29,7 +29,7 @@ public class Plot {
 
     /**
      * World Z coordinate of the BOTTOM-LEFT corner of the inner plot area.
-     * Always 0 in our layout — plots only extend on the X axis.
+     * Always 0 in our layout â€” plots only extend on the X axis.
      */
     private final int innerMinZ;
 
@@ -41,7 +41,7 @@ public class Plot {
 
     // ── Voting state ─────────────────────────────────────────────────────────
 
-    /** Map of voter UUID → score (1-10). */
+    /** Map of voter UUID â†’ score (1-10). */
     private final Map<UUID, Integer> votes = new HashMap<>();
 
     /** Cumulative score sum used for average calculation. */
@@ -92,7 +92,7 @@ public class Plot {
 
     /**
      * Returns the centre of the inner plot at standing height (y=65) as a
-     * Location — used for teleporting players to their plot.
+     * Location â€” used for teleporting players to their plot.
      */
     public Location getCentreLocation(org.bukkit.World world) {
         double cx = innerMinX + innerSize / 2.0;
@@ -167,3 +167,4 @@ public class Plot {
     public boolean isDone()     { return done; }
     public void  setDone(boolean done) { this.done = done; }
 }
+

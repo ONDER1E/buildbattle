@@ -5,7 +5,7 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /force_start — (Admin) Skips the ready-check and immediately advances
+ * /force_start - (Admin) Skips the ready-check and immediately advances
  * the game from LOBBY to WORD_SELECTION.
  *
  * Permission: buildbattle.admin

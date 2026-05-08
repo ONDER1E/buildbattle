@@ -5,10 +5,10 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /done — Marks the player's build as complete and switches them to spectator.
+ * /done - Marks the player's build as complete and switches them to spectator.
  *
  * If all players finish before the timer, voting starts immediately.
- * The build is then locked — the iron walls prevent re-entry and the
+ * The build is then locked - the iron walls prevent re-entry and the
  * GameMode change prevents block interaction.
  */
 public class DoneCommand implements CommandExecutor {

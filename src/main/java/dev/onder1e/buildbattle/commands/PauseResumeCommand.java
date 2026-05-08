@@ -7,8 +7,8 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /pause  — freeze the active countdown.
- * /resume — continue the countdown from where it was paused.
+ * /pause  - freeze the active countdown.
+ * /resume - continue the countdown from where it was paused.
  *
  * Permission: buildbattle.admin
  */

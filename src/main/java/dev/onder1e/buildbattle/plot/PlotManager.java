@@ -9,31 +9,31 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * PlotManager — plot layout, async generation, fast chunk cleanup.
+ * PlotManager â€” plot layout, async generation, fast chunk cleanup.
  *
  * GENERATION OPTIMISATIONS (v1.0.2):
  * ─────────────────────────────────────
- * 1. Hollow iron walls — only the 1-block-thick surface shell of the buffer
+ * 1. Hollow iron walls â€” only the 1-block-thick surface shell of the buffer
  *    zone is filled with IRON_BLOCK. The interior of the wall is left as air.
  *    This reduces block-set operations on edge chunks significantly and keeps
  *    the wall visually solid (players see the surface, not the interior).
  *
- * 2. Async chunk loading — getChunkAtAsync() fires all chunk loads in parallel.
+ * 2. Async chunk loading â€” getChunkAtAsync() fires all chunk loads in parallel.
  *    fillChunk() runs on the main thread callback (safe) using direct Chunk
  *    object access (no world.getBlockAt overhead).
  *
- * 3. Early-exit column classification — per column we determine in O(1)
+ * 3. Early-exit column classification â€” per column we determine in O(1)
  *    whether it is: inner (grass only), outer air (skip entirely), or wall
  *    surface (fill selectively). This avoids any block writes for air columns.
  *
  * CLEANUP OPTIMISATION (v1.0.2):
  * ─────────────────────────────────
  * world.regenerateChunk() is REMOVED. It runs the full terrain pipeline
- * (biome sampling, noise, decoration) even for a void generator — wasteful.
+ * (biome sampling, noise, decoration) even for a void generator â€” wasteful.
  *
  * New approach:
  *   1. Delete the region file entry for each chunk using the Anvil region
- *      file directly (set chunk offset to 0 in the .mca header → chunk
+ *      file directly (set chunk offset to 0 in the .mca header â†’ chunk
  *      treated as ungenerated on next load).
  *   2. Unload the chunk from memory with save=false.
  *
@@ -121,18 +121,18 @@ public class PlotManager {
      *
      * Column classification (all O(1)):
      *
-     *  INNER  — worldX/Z inside inner plot bounds → grass at y=64 only.
+     *  INNER  â€” worldX/Z inside inner plot bounds â†’ grass at y=64 only.
      *
-     *  WALL SURFACE — worldX/Z is on the outermost or innermost shell of the
-     *                 buffer zone → iron from minY to maxY.
+     *  WALL SURFACE â€” worldX/Z is on the outermost or innermost shell of the
+     *                 buffer zone â†’ iron from minY to maxY.
      *                 "Surface" means: the column touches the total boundary
      *                 (outer face) OR touches the inner plot edge (inner face).
      *
-     *  WALL INTERIOR — worldX/Z is inside the buffer but not on either face
-     *                  → leave as air (hollow interior). No block writes needed.
+     *  WALL INTERIOR â€” worldX/Z is inside the buffer but not on either face
+     *                  â†’ leave as air (hollow interior). No block writes needed.
      *
      * This makes walls look solid from the outside and inside while writing
-     * far fewer blocks (2 faces × perimeter vs entire buffer volume).
+     * far fewer blocks (2 faces Ã- perimeter vs entire buffer volume).
      */
     private void fillChunk(Chunk chunk, Plot plot) {
         int cwx = chunk.getX() << 4;  // chunk's world X origin
@@ -177,7 +177,7 @@ public class PlotManager {
                         for (int y = minY; y < maxY; y++) {
                             chunk.getBlock(lx, y, lz).setType(Material.IRON_BLOCK, false);
                         }
-                        // else: hollow interior → leave as air, no writes
+                        // else: hollow interior â†’ leave as air, no writes
                     }
                 }
             }
@@ -199,7 +199,7 @@ public class PlotManager {
      *  - unloadChunk(cx, cz, false): Paper 1.20.1 ignores the save=false flag
      *    for dirty (modified) chunks as a safety measure and saves them anyway.
      *
-     * SOLUTION — regenerateChunk():
+     * SOLUTION â€” regenerateChunk():
      *   world.regenerateChunk(cx, cz) replaces the chunk's content in-memory
      *   and on-disk using the world's ChunkGenerator (our VoidChunkGenerator).
      *   It is deprecated in newer Paper versions but is the ONLY reliable
@@ -210,12 +210,12 @@ public class PlotManager {
      *   data to it), so unloadChunk correctly discards the in-memory copy.
      *
      * PERFORMANCE:
-     *   regenerateChunk on a void world is fast — the generator returns an
+     *   regenerateChunk on a void world is fast â€” the generator returns an
      *   empty ChunkData with no terrain logic. We batch 10 chunks per tick
      *   (regenerateChunk is heavier than a plain unload) to stay smooth.
      *
      * After all chunks are processed we attempt to delete any .mca region
-     * files that are entirely within plot space — this is a bonus cleanup
+     * files that are entirely within plot space â€” this is a bonus cleanup
      * that removes the now-void region files from disk entirely.
      */
     @SuppressWarnings("deprecation")
@@ -263,7 +263,7 @@ public class PlotManager {
             if (full) deletableRegions.add(rk);
         }
 
-        final int BATCH = 10; // regenerateChunk is heavier — keep batches small
+        final int BATCH = 10; // regenerateChunk is heavier â€” keep batches small
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
@@ -280,7 +280,7 @@ public class PlotManager {
                 // Replace chunk content with void (uses our VoidChunkGenerator)
                 world.regenerateChunk(cx, cz);
 
-                // Now safe to unload — chunk is no longer dirty after regeneration
+                // Now safe to unload â€” chunk is no longer dirty after regeneration
                 world.unloadChunk(cx, cz, false);
             }
             cursor[0] = end;
@@ -315,14 +315,14 @@ public class PlotManager {
      * build regardless of Paper's chunk save behaviour.
      * Exposed via /safe_erase_plots for admin use when normal cleanup fails.
      *
-     * Batched at 2 chunks/tick — each chunk has up to 65536 block sets so
+     * Batched at 2 chunks/tick â€” each chunk has up to 65536 block sets so
      * we keep batches small to avoid tick spikes. The operation runs over
      * several seconds but produces no lag spikes.
      *
      * @param onComplete Called on the main thread when done.
      */
     public void safeErasePlots(Runnable onComplete) {
-        // Take a snapshot — can be called while orderedPlots is still populated
+        // Take a snapshot â€” can be called while orderedPlots is still populated
         // (admin might call this mid-game as an emergency)
         List<Plot> toErase = new ArrayList<>(orderedPlots);
         plotsByOwner.clear();
@@ -347,7 +347,7 @@ public class PlotManager {
         List<int[]> coordList = new ArrayList<>(chunkCoords.values());
         int minY = world.getMinHeight();
         int maxY = world.getMaxHeight();
-        final int BATCH = 2; // 2 chunks/tick — each chunk up to 65536 block sets
+        final int BATCH = 2; // 2 chunks/tick â€” each chunk up to 65536 block sets
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
@@ -402,3 +402,4 @@ public class PlotManager {
     public int   getBufferBlocks()          { return bufferBlocks; }
     public int   getTotalBlocks()           { return totalBlocks; }
 }
+

@@ -1,12 +1,15 @@
 package dev.onder1e.buildbattle.commands;
 
+import org.bukkit.command.Command;
+import org.bukkit.command.CommandExecutor;
+import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
+
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
 import dev.onder1e.buildbattle.game.GameState;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import org.bukkit.command.*;
-import org.bukkit.entity.Player;
 
 /**
  * /safe_erase_plots
@@ -36,6 +39,8 @@ public class SafeErasePlotsCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (sender == null) return true;
+
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Only players can use this command.");
             return true;
@@ -50,7 +55,7 @@ public class SafeErasePlotsCommand implements CommandExecutor {
         if (state == GameState.BUILDING || state == GameState.VOTING
                 || state == GameState.WORD_SELECTION || state == GameState.RESULTS) {
             player.sendMessage(Component.text(
-                    "Active game detected — forcing reset before erase.", NamedTextColor.GOLD));
+                    "Active game detected - forcing reset before erase.", NamedTextColor.GOLD));
             gameManager.forceReset();
             // forceReset calls destroyAllPlots internally, but safeErasePlots
             // is called here as an ADDITIONAL visible wipe on top of that.
@@ -68,7 +73,7 @@ public class SafeErasePlotsCommand implements CommandExecutor {
         plugin.getPlotManager().safeErasePlots(() -> {
             if (player.isOnline()) {
                 player.sendMessage(Component.text(
-                        "Safe erase complete — all plots cleared.", NamedTextColor.GREEN));
+                        "Safe erase complete - all plots cleared.", NamedTextColor.GREEN));
             }
         });
     }

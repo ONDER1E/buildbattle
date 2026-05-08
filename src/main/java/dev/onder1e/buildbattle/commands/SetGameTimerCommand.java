@@ -9,10 +9,10 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /set_game_timer <minutes> — (Admin) Update the building phase duration.
+ * /set_game_timer <minutes> - (Admin) Update the building phase duration.
  *
  * Persists the new value to config.yml immediately so it survives restarts.
- * Takes effect on the NEXT building phase — not mid-game.
+ * Takes effect on the NEXT building phase - not mid-game.
  *
  * Permission: buildbattle.admin
  */
@@ -28,6 +28,8 @@ public class SetGameTimerCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
+        if (sender == null) return true;
+        
         if (!(sender instanceof Player player)) {
             sender.sendMessage("Only players can use this command.");
             return true;
