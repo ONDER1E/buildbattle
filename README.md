@@ -8,7 +8,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 
 ## Server Pack
 
-- You can download the [Server Pack](https://github.com/ONDER1E/buildbattle/releases/download/v1.0.0/buildbattle_serverpack.zip)
+- You can download the [Server Pack](https://github.com/ONDER1E/buildbattle/releases/download/v1.1.5/buildbattle_serverpack.zip)
 - Fully plug and play
 - Run from `start.bat` (Windows) or `start.sh` (Linux)
 
