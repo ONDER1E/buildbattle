@@ -20,3 +20,6 @@ desktop.ini
 # Logs
 *.log
 logs/
+
+# Server Pack releases
+releases/

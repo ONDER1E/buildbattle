@@ -6,6 +6,19 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 
 ---
 
+## Server Pack
+
+- You can download the [Server Pack](https://github.com/ONDER1E/buildbattle/releases/download/v1.0.0/buildbattle_serverpack.zip)
+- Fully plug and play
+- Run from `start.bat` (Windows) or `start.sh` (Linux)
+
+- You can PvP in the lobby, theres a worldedit schematic you can load called `set`
+- After opping yourself and you join the server you will spawn at the centre of the lobby
+- Do `//schem load set` then do `//paste` and a stack of command blocks will be above you
+- Press the button to get PvP items, you can remove an item you dont want by just removing the command of its respective command block  
+
+---
+
 ## Features
 
 - **Plug and play** - game is designed to begin from a clean vanilla paper installation
@@ -144,9 +157,3 @@ commands/
 - Plot cleanup uses `world.regenerateChunk()` (deprecated in Paper 1.20+) as it is the only reliable no-NMS approach on this version. `/safe_erase_plots` provides a block-by-block fallback.
 - The packet isolation approach (sending fake air chunks) works for standard clients but may not fully block FreeCam mods that read memory directly.
 - WorldEdit `//copy` of another player's build is possible if they `/paste` inside their own plot - the mask only restricts writes, not reads.
-
----
-
-## License
-
-Do whatever you want with it. Just don't sell it and claim you wrote it yourself - because neither of us did, really.
