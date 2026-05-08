@@ -44,6 +44,32 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 
 ---
 
+## Permissions
+
+- Players need these permission nodes to play:
+```
+worldedit.brush.*
+worldedit.region.*
+worldedit.selection.*
+fawe.permpack.basic
+fawe.worldeditregion
+fawe.worldguard
+fawe.worldguard.member
+worldedit.clipboard.copy
+worldedit.clipboard.paste
+worldedit.clipboard.rotate
+worldedit.history.redo
+worldedit.history.undo
+worldedit.navigation.jumpto
+worldedit.navigation.thru
+worldedit.region.replace
+worldedit.region.set
+worldedit.selection.pos
+worldedit.wand
+```
+
+---
+
 ## Building
 
 ```powershell
