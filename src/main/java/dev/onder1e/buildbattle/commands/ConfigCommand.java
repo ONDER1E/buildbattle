@@ -13,13 +13,13 @@ import org.bukkit.entity.Player;
  * and take effect at the next relevant phase transition.
  *
  * Valid keys:
- *   game_timer            - build phase duration in minutes (1–120)
- *   word_selection_timer  - theme vote duration in seconds (10–300)
- *   voting_timer          - per-build vote duration in seconds (5–300)
- *   min_players           - minimum players to start (1–20, immediate)
- *   lobby_return_timer    - results→lobby countdown seconds (5–120, immediate)
- *   plot_size             - plot size in chunks (1–30, next game)
- *   buffer_size           - iron wall width in chunks (1–10, next game)
+ *   game_timer            - build phase duration in minutes (1-120)
+ *   word_selection_timer  - theme vote duration in seconds (10-300)
+ *   voting_timer          - per-build vote duration in seconds (5-300)
+ *   min_players           - minimum players to start (1-20, immediate)
+ *   lobby_return_timer    - results→lobby countdown seconds (5-120, immediate)
+ *   plot_size             - plot size in chunks (1-30, next game)
+ *   buffer_size           - iron wall width in chunks (1-10, next game)
  *
  * Usage examples:
  *   /config game_timer 10
@@ -47,7 +47,7 @@ public class ConfigCommand implements CommandExecutor {
             player.sendMessage(Component.text("Usage: /config <key> <value>", NamedTextColor.RED));
             player.sendMessage(Component.text(
                     "Keys: game_timer, word_selection_timer, voting_timer, " +
-                    "min_players, lobby_return_timer, plot_size, buffer_size",
+                    "min_players, lobby_return_timer, plot_size, buffer_size, lobby_pvp",
                     NamedTextColor.GRAY));
             return true;
         }

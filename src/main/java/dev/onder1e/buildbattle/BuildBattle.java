@@ -17,7 +17,6 @@ import org.bukkit.plugin.java.JavaPlugin;
 import dev.onder1e.buildbattle.commands.AddWordCommand;
 import dev.onder1e.buildbattle.commands.ChooseCommand;
 import dev.onder1e.buildbattle.commands.ConfigCommand;
-import dev.onder1e.buildbattle.commands.DoPvPCommand;
 import dev.onder1e.buildbattle.commands.DoneCommand;
 import dev.onder1e.buildbattle.commands.ForceChooseCommand;
 import dev.onder1e.buildbattle.commands.ForceEndCommand;
@@ -78,6 +77,9 @@ public final class BuildBattle extends JavaPlugin {
         packetHandler = new PacketHandler(this);
         gameManager   = new GameManager(this, plotManager, packetHandler);
 
+        plotManager.createLobbyRegion(getLobbyMinX(), getLobbyMinZ(), getLobbyMaxX(), getLobbyMaxZ());
+        plotManager.ensureGlobalFlags();
+
         Bukkit.getPluginManager().registerEvents(new PlayerListener(this, gameManager), this);
         
         // Assigned to field to resolve diagnostic hints
@@ -129,7 +131,7 @@ public final class BuildBattle extends JavaPlugin {
         world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, true);
-        world.setPVP(true);
+        world.setPVP(false);
         world.setTime(6000);
         return world;
     }
@@ -220,7 +222,6 @@ public final class BuildBattle extends JavaPlugin {
         Objects.requireNonNull(getCommand("resume")).setExecutor(pauseResume);
         Objects.requireNonNull(getCommand("config")).setExecutor(new ConfigCommand(gameManager));
         Objects.requireNonNull(getCommand("safe_erase_plots")).setExecutor(new SafeErasePlotsCommand(this, gameManager));
-        Objects.requireNonNull(getCommand("dopvp")).setExecutor(new DoPvPCommand(gameManager));
         Objects.requireNonNull(getCommand("pvpready")).setExecutor(new PvPReadyCommand(gameManager));
     }
 

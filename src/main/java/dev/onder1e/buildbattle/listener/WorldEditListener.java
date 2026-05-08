@@ -1,22 +1,22 @@
 package dev.onder1e.buildbattle.listener;
 
-import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.WorldEdit;
-import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.event.extent.EditSessionEvent;
 import com.sk89q.worldedit.extension.platform.Actor;
-import com.sk89q.worldedit.function.mask.Mask;
+import com.sk89q.worldedit.extent.AbstractDelegateExtent;
+import com.sk89q.worldedit.extent.Extent;
 import com.sk89q.worldedit.math.BlockVector3;
 import com.sk89q.worldedit.util.eventbus.Subscribe;
+import com.sk89q.worldedit.world.block.BlockStateHolder;
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.game.GameManager;
 import dev.onder1e.buildbattle.game.GameState;
 import dev.onder1e.buildbattle.plot.Plot;
 import dev.onder1e.buildbattle.plot.PlotManager;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-
-import javax.annotation.Nullable;
 
 public class WorldEditListener {
 
@@ -38,64 +38,77 @@ public class WorldEditListener {
 
     @Subscribe
     public void onEditSession(EditSessionEvent event) {
+        // Must have a player actor
         Actor actor = event.getActor();
         if (actor == null || !actor.isPlayer()) return;
 
-        Object adapted = BukkitAdapter.adapt(actor);
-        if (!(adapted instanceof Player player)) return;
+        // BukkitAdapter.adapt(Actor) returns CommandSender — cast via BukkitPlayer
+        if (!(actor instanceof com.sk89q.worldedit.bukkit.BukkitPlayer bukkitPlayer)) return;
+        Player player = bukkitPlayer.getPlayer();
+        if (player == null) return;
 
-        // FIX: Check if the extent is an EditSession to access setMask
-        if (event.getExtent() instanceof EditSession session) {
-            session.setMask(new BuildBattleMask(player));
-        }
+        // Admins bypass all WE restrictions
+        if (player.hasPermission("buildbattle.admin")) return;
+
+        // Wrap the extent — this fires for EVERY stage so wrapping is always safe
+        event.setExtent(new PlotBoundaryExtent(event.getExtent(), player));
     }
 
-    /**
-     * Implementing Mask directly instead of extending AbstractMask 
-     * to avoid version-specific 'copy()' override issues.
-     */
-    private class BuildBattleMask implements Mask {
-        private final Player player;
+    private class PlotBoundaryExtent extends AbstractDelegateExtent {
 
-        public BuildBattleMask(Player player) {
+        private final Player player;
+        private int blockedCount = 0;
+
+        PlotBoundaryExtent(Extent parent, Player player) {
+            super(parent);
             this.player = player;
         }
 
         @Override
-        public boolean test(BlockVector3 vector) {
-            Location loc = new Location(player.getWorld(), vector.x(), vector.y(), vector.z());
+        public <T extends BlockStateHolder<T>> boolean setBlock(
+                BlockVector3 pos, T block) throws com.sk89q.worldedit.WorldEditException {
 
-            // 1. Lobby Check
-            if (plugin.isInsideLobby(loc)) return false;
+            int x = pos.x();
+            int y = pos.y();
+            int z = pos.z();
 
-            // 2. Admin Bypass
-            if (player.hasPermission("buildbattle.admin")) return true;
+            Location loc = new Location(player.getWorld(), x, y, z);
 
-            // 3. Phase Check
-            if (gameManager.getCurrentState() != GameState.BUILDING) return false;
+            // Block WE inside the lobby entirely
+            if (plugin.isInsideLobby(loc)) {
+                sendBlockedMessage();
+                return false;
+            }
 
-            // 4. Plot Boundary Check
+            // Outside BUILDING phase — block all WE
+            if (gameManager.getCurrentState() != GameState.BUILDING) {
+                sendBlockedMessage();
+                return false;
+            }
+
+            // Must have a plot
             Plot plot = plotManager.getPlot(player);
-            if (plot == null) return false;
+            if (plot == null) {
+                sendBlockedMessage();
+                return false;
+            }
 
-            int x = vector.x();
-            int z = vector.z();
+            // Must be within inner plot XZ boundary (Y unrestricted)
+            if (x < plot.getInnerMinX() || x > plot.getInnerMaxX()
+             || z < plot.getInnerMinZ() || z > plot.getInnerMaxZ()) {
+                sendBlockedMessage();
+                return false;
+            }
 
-            return x >= plot.getInnerMinX() && x <= plot.getInnerMaxX() &&
-                   z >= plot.getInnerMinZ() && z <= plot.getInnerMaxZ();
+            return super.setBlock(pos, block);
         }
 
-        // FIX: Return a generic Mask to satisfy the interface override
-        @Override
-        public Mask copy() {
-            return new BuildBattleMask(player);
-        }
-
-        // Required by some WorldEdit 7 versions
-        @Nullable
-        @Override
-        public Mask getToApply() {
-            return this;
+        private void sendBlockedMessage() {
+            blockedCount++;
+            if (blockedCount == 1) {
+                player.sendMessage(Component.text(
+                    "WorldEdit blocked outside your plot!", NamedTextColor.RED));
+            }
         }
     }
 }

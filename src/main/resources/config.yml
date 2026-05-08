@@ -23,6 +23,8 @@ min_players: 2
 # to the lobby. Players will see a visible countdown in chat.
 lobby_return_timer: 30
 
+lobbyPvP: false
+
 # Theme pool — 3 random themes are picked each round for players to vote on.
 # Use /addword and /removeword to manage this list in-game (auto-saves here).
 themes: >

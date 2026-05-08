@@ -1,5 +1,14 @@
 package dev.onder1e.buildbattle.plot;
 
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.math.BlockVector3;
+import com.sk89q.worldguard.WorldGuard;
+import com.sk89q.worldguard.protection.flags.Flags;
+import com.sk89q.worldguard.protection.flags.StateFlag;
+import com.sk89q.worldguard.protection.managers.RegionManager;
+import com.sk89q.worldguard.protection.regions.GlobalProtectedRegion;
+import com.sk89q.worldguard.protection.regions.ProtectedCuboidRegion;
+import com.sk89q.worldguard.protection.regions.RegionContainer;
 import dev.onder1e.buildbattle.BuildBattle;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
@@ -9,37 +18,31 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * PlotManager â€” plot layout, async generation, fast chunk cleanup.
+ * PlotManager
  *
- * GENERATION OPTIMISATIONS (v1.0.2):
- * ─────────────────────────────────────
- * 1. Hollow iron walls â€” only the 1-block-thick surface shell of the buffer
- *    zone is filled with IRON_BLOCK. The interior of the wall is left as air.
- *    This reduces block-set operations on edge chunks significantly and keeps
- *    the wall visually solid (players see the surface, not the interior).
- *
- * 2. Async chunk loading â€” getChunkAtAsync() fires all chunk loads in parallel.
- *    fillChunk() runs on the main thread callback (safe) using direct Chunk
- *    object access (no world.getBlockAt overhead).
- *
- * 3. Early-exit column classification â€” per column we determine in O(1)
- *    whether it is: inner (grass only), outer air (skip entirely), or wall
- *    surface (fill selectively). This avoids any block writes for air columns.
- *
- * CLEANUP OPTIMISATION (v1.0.2):
+ * WorldGuard integration strategy:
  * ─────────────────────────────────
- * world.regenerateChunk() is REMOVED. It runs the full terrain pipeline
- * (biome sampling, noise, decoration) even for a void generator â€” wasteful.
+ * Each inner plot gets a ProtectedCuboidRegion named "buildbattle_plot_<index>".
+ * The region covers the full Y range of the inner plot XZ footprint.
  *
- * New approach:
- *   1. Delete the region file entry for each chunk using the Anvil region
- *      file directly (set chunk offset to 0 in the .mca header â†’ chunk
- *      treated as ungenerated on next load).
- *   2. Unload the chunk from memory with save=false.
+ * Flags set on each plot region:
+ *   BUILD       ALLOW  - members (the plot owner) can build
+ *   BUILD       DENY   - non-members cannot build (region default)
  *
- * Result: next time the chunk loads it is generated fresh by VoidChunkGenerator
- * (all air) with zero disk I/O beyond the header write. Batched at 30
- * chunks/tick so the operation is lag-free.
+ * The plot owner is added as a MEMBER so WorldGuard allows them to build.
+ * All other players are implicitly denied by the region's default BUILD deny.
+ *
+ * LOBBY protection:
+ *   A single "buildbattle_lobby" region is created once in onEnable() covering
+ *   the lobby XZ/Y bounds. Flags: BUILD DENY, INTERACT DENY for non-members.
+ *   This handles lobby protection without duplicating regions per game.
+ *   The lobby region is never removed - it persists for the life of the plugin.
+ *
+ * Plot regions are created in generatePlots() and removed in destroyAllPlots().
+ * WorldGuard persists regions to disk automatically via its own scheduler.
+ *
+ * IMPORTANT: WorldGuard's RegionManager.save() is called after bulk changes
+ * to ensure regions survive a server restart mid-game.
  */
 public class PlotManager {
 
@@ -55,6 +58,11 @@ public class PlotManager {
     private static final int FIRST_PLOT_ORIGIN_X = 0;
     private static final int PLOT_GAP_BLOCKS     = 16;
 
+    /** WorldGuard region name for the lobby - created once, never removed. */
+    public static final String LOBBY_REGION_ID = "buildbattle_lobby";
+    /** Prefix for per-plot WorldGuard regions. */
+    private static final String PLOT_REGION_PREFIX = "buildbattle_plot_";
+
     private final Map<UUID, Plot> plotsByOwner = new LinkedHashMap<>();
     private final List<Plot>      orderedPlots = new ArrayList<>();
 
@@ -66,6 +74,143 @@ public class PlotManager {
         this.innerBlocks  = plotChunks  * 16;
         this.bufferBlocks = bufferChunks * 16;
         this.totalBlocks  = innerBlocks + 2 * bufferBlocks;
+    }
+
+    // =========================================================================
+    // ── WorldGuard helpers ────────────────────────────────────────────────────
+    // =========================================================================
+
+    /**
+     * Returns the RegionManager for the game world, or null if WorldGuard is
+     * not loaded (should never happen given plugin.yml depend).
+     */
+    private RegionManager getRegionManager() {
+        RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
+        return container.get(BukkitAdapter.adapt(world));
+    }
+
+    /**
+     * Creates the permanent lobby WorldGuard region.
+     *
+     * Called once from BuildBattle.onEnable() AFTER buildLobby() so the bounds
+     * are known. If the region already exists (server restart) it is left alone
+     * - the existing region already has the correct flags.
+     *
+     * The lobby region:
+     *   - Denies BUILD and INTERACT for everyone (no members)
+     *   - Allows FAWE/WorldEdit operations to be blocked by WorldGuard
+     *     (WorldGuard's __global__ deny-message handles the WE side)
+     *
+     * Wool is exempt from the BUILD deny via PlayerListener (wool-only exception
+     * for PvP) - WorldGuard's region flag cannot distinguish material types, so
+     * the PlayerListener's onBlockBreak wool exception remains in place.
+     */
+    public void createLobbyRegion(int minX, int minZ, int maxX, int maxZ) {
+        RegionManager rm = getRegionManager();
+        if (rm == null) return;
+
+        // If region already exists from a previous server session, leave it
+        if (rm.hasRegion(LOBBY_REGION_ID)) return;
+
+        BlockVector3 min = BlockVector3.at(minX, world.getMinHeight(), minZ);
+        BlockVector3 max = BlockVector3.at(maxX, world.getMaxHeight(), maxZ);
+
+        ProtectedCuboidRegion region = new ProtectedCuboidRegion(LOBBY_REGION_ID, min, max);
+
+        // Deny all building and interaction inside the lobby by default.
+        // PvP (entity damage) is allowed - handled by world.setPVP(true).
+        region.setFlag(Flags.BUILD,    StateFlag.State.DENY);
+        region.setFlag(Flags.INTERACT, StateFlag.State.DENY);
+
+        rm.addRegion(region);
+        saveRegions(rm);
+
+        plugin.getLogger().info("[PlotManager] Lobby region created: " + LOBBY_REGION_ID);
+    }
+
+    /**
+     * Creates a WorldGuard region for a single plot's INNER area.
+     *
+     * Region name: "buildbattle_plot_<index>"
+     * Owner (MEMBER): the plot owner's UUID - WorldGuard allows members to build.
+     * Non-members receive BUILD DENY from the region default.
+     *
+     * The region covers the full Y column of the inner XZ footprint so players
+     * cannot WorldEdit above or below their plot either.
+     */
+    private void createPlotRegion(Plot plot) {
+        RegionManager rm = getRegionManager();
+        if (rm == null) return;
+
+        String id = PLOT_REGION_PREFIX + plot.getIndex();
+
+        BlockVector3 min = BlockVector3.at(
+                plot.getInnerMinX(), world.getMinHeight(), plot.getInnerMinZ());
+        BlockVector3 max = BlockVector3.at(
+                plot.getInnerMaxX(), world.getMaxHeight(), plot.getInnerMaxZ());
+
+        ProtectedCuboidRegion region = new ProtectedCuboidRegion(id, min, max);
+
+        // Higher priority than __global__ so ALLOW overrides the global DENY
+        region.setPriority(10);
+
+        // ALLOW build for members only - non-members still hit __global__ DENY
+        region.setFlag(Flags.BUILD, StateFlag.State.ALLOW);
+
+        // Add owner as MEMBER - WorldGuard applies BUILD ALLOW to members
+        Player owner = Bukkit.getPlayer(plot.getOwnerUUID());
+        if (owner != null) {
+            region.getMembers().addPlayer(
+                com.sk89q.worldguard.bukkit.WorldGuardPlugin.inst()
+                    .wrapPlayer(owner)
+            );
+        } else {
+            // Fallback if somehow offline - UUID only
+            region.getMembers().addPlayer(plot.getOwnerUUID());
+        }
+
+        rm.addRegion(region);
+    }
+
+    public void ensureGlobalFlags() {
+        RegionManager rm = getRegionManager();
+        if (rm == null) return;
+
+        // __global__ always exists in every WG world - just grab and flag it
+        com.sk89q.worldguard.protection.regions.ProtectedRegion global =
+                rm.getRegion("__global__");
+        if (global == null) return;
+
+        // Only set if not already set - avoids overwriting admin customisations
+        if (global.getFlag(Flags.BUILD) == null) {
+            global.setFlag(Flags.BUILD, StateFlag.State.DENY);
+        }
+        if (global.getFlag(Flags.INTERACT) == null) {
+            global.setFlag(Flags.INTERACT, StateFlag.State.DENY);
+        }
+
+        saveRegions(rm);
+        plugin.getLogger().info("[PlotManager] __global__ flags ensured for buildbattle world.");
+    }
+
+    /**
+     * Removes a single plot's WorldGuard region.
+     * Called per-plot during destroyAllPlots().
+     */
+    private void removePlotRegion(Plot plot) {
+        RegionManager rm = getRegionManager();
+        if (rm == null) return;
+        rm.removeRegion(PLOT_REGION_PREFIX + plot.getIndex());
+    }
+
+    /** Saves the region manager to disk asynchronously. */
+    private void saveRegions(RegionManager rm) {
+        try {
+            rm.save();
+        } catch (Exception e) {
+            plugin.getLogger().warning("[PlotManager] Failed to save WorldGuard regions: "
+                    + e.getMessage());
+        }
     }
 
     // =========================================================================
@@ -106,8 +251,16 @@ public class PlotManager {
                     world.getChunkAtAsync(cx, cz).thenAccept(chunk -> {
                         fillChunk(chunk, fp);
                         if (readyChunks.incrementAndGet() == totalChunks) {
+                            // All chunks filled - create WorldGuard regions
+                            for (Plot p : orderedPlots) {
+                                createPlotRegion(p);
+                            }
+                            // Bulk save once after all regions are registered
+                            RegionManager rm = getRegionManager();
+                            if (rm != null) saveRegions(rm);
+
                             plugin.getLogger().info(() -> "[PlotManager] "
-                                    + orderedPlots.size() + " plots generated.");
+                                    + orderedPlots.size() + " plots generated and protected.");
                             onComplete.run();
                         }
                     });
@@ -116,31 +269,12 @@ public class PlotManager {
         }
     }
 
-    /**
-     * Fills one chunk with the correct materials for its plot zone.
-     *
-     * Column classification (all O(1)):
-     *
-     *  INNER  â€” worldX/Z inside inner plot bounds â†’ grass at y=64 only.
-     *
-     *  WALL SURFACE â€” worldX/Z is on the outermost or innermost shell of the
-     *                 buffer zone â†’ iron from minY to maxY.
-     *                 "Surface" means: the column touches the total boundary
-     *                 (outer face) OR touches the inner plot edge (inner face).
-     *
-     *  WALL INTERIOR â€” worldX/Z is inside the buffer but not on either face
-     *                  â†’ leave as air (hollow interior). No block writes needed.
-     *
-     * This makes walls look solid from the outside and inside while writing
-     * far fewer blocks (2 faces Ã- perimeter vs entire buffer volume).
-     */
     private void fillChunk(Chunk chunk, Plot plot) {
-        int cwx = chunk.getX() << 4;  // chunk's world X origin
+        int cwx = chunk.getX() << 4;
         int cwz = chunk.getZ() << 4;
         int minY = world.getMinHeight();
         int maxY = world.getMaxHeight();
 
-        // Pre-compute boundaries for fast per-column checks
         int iMinX = plot.getInnerMinX(), iMaxX = plot.getInnerMaxX();
         int iMinZ = plot.getInnerMinZ(), iMaxZ = plot.getInnerMaxZ();
         int tMinX = plot.getTotalMinX(), tMaxX = plot.getTotalMaxX();
@@ -148,8 +282,6 @@ public class PlotManager {
 
         for (int lx = 0; lx < 16; lx++) {
             int wx = cwx + lx;
-
-            // Skip columns outside the total footprint entirely
             if (wx < tMinX || wx > tMaxX) continue;
 
             for (int lz = 0; lz < 16; lz++) {
@@ -160,24 +292,16 @@ public class PlotManager {
                                && wz >= iMinZ && wz <= iMaxZ;
 
                 if (isInner) {
-                    // Inner plot: grass floor only
                     chunk.getBlock(lx, 64, lz).setType(Material.GRASS_BLOCK, false);
-
                 } else {
-                    // Buffer zone: only fill if on the OUTER face or INNER face
-                    // Outer face: column touches the total bounding box edge
                     boolean onOuterFace = wx == tMinX || wx == tMaxX
                                        || wz == tMinZ || wz == tMaxZ;
-                    // Inner face: column is directly adjacent to the inner plot
                     boolean onInnerFace = wx == iMinX - 1 || wx == iMaxX + 1
                                        || wz == iMinZ - 1 || wz == iMaxZ + 1;
-
                     if (onOuterFace || onInnerFace) {
-                        // Solid iron surface shell
                         for (int y = minY; y < maxY; y++) {
                             chunk.getBlock(lx, y, lz).setType(Material.IRON_BLOCK, false);
                         }
-                        // else: hollow interior â†’ leave as air, no writes
                     }
                 }
             }
@@ -188,36 +312,6 @@ public class PlotManager {
     // ── Cleanup ───────────────────────────────────────────────────────────────
     // =========================================================================
 
-    /**
-     * Destroys all plot chunks reliably on Paper 1.20.1.
-     *
-     * ROOT CAUSE OF PREVIOUS FAILURES:
-     *
-     *  - Direct region file header edit: Paper's RegionFileCache holds open file
-     *    handles and overwrites our edits on its next flush.
-     *
-     *  - unloadChunk(cx, cz, false): Paper 1.20.1 ignores the save=false flag
-     *    for dirty (modified) chunks as a safety measure and saves them anyway.
-     *
-     * SOLUTION â€” regenerateChunk():
-     *   world.regenerateChunk(cx, cz) replaces the chunk's content in-memory
-     *   and on-disk using the world's ChunkGenerator (our VoidChunkGenerator).
-     *   It is deprecated in newer Paper versions but is the ONLY reliable
-     *   no-NMS approach on 1.20.1 that actually clears the chunk data.
-     *
-     *   We then call world.unloadChunk(cx, cz, false) after regeneration.
-     *   At this point the chunk is no longer dirty (regenerateChunk wrote void
-     *   data to it), so unloadChunk correctly discards the in-memory copy.
-     *
-     * PERFORMANCE:
-     *   regenerateChunk on a void world is fast â€” the generator returns an
-     *   empty ChunkData with no terrain logic. We batch 10 chunks per tick
-     *   (regenerateChunk is heavier than a plain unload) to stay smooth.
-     *
-     * After all chunks are processed we attempt to delete any .mca region
-     * files that are entirely within plot space â€” this is a bonus cleanup
-     * that removes the now-void region files from disk entirely.
-     */
     @SuppressWarnings("deprecation")
     public void destroyAllPlots(Runnable onComplete) {
         List<Plot> toDestroy = new ArrayList<>(orderedPlots);
@@ -229,7 +323,13 @@ public class PlotManager {
             return;
         }
 
-        // Collect all unique chunk coordinates
+        // Remove WorldGuard regions immediately (no need to wait for chunks)
+        for (Plot plot : toDestroy) {
+            removePlotRegion(plot);
+        }
+        RegionManager rm = getRegionManager();
+        if (rm != null) saveRegions(rm);
+
         Map<Long, int[]> chunkCoords = new LinkedHashMap<>();
         for (Plot plot : toDestroy) {
             for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
@@ -242,7 +342,6 @@ public class PlotManager {
         List<int[]> coordList = new ArrayList<>(chunkCoords.values());
         File worldFolder = world.getWorldFolder();
 
-        // Which region files are 100% plot-owned (safe to delete after cleanup)
         Set<Long> plotChunkKeys = new HashSet<>(chunkCoords.keySet());
         Set<Long> deletableRegions = new HashSet<>();
         Map<Long, List<int[]>> regionToChunks = new HashMap<>();
@@ -263,7 +362,7 @@ public class PlotManager {
             if (full) deletableRegions.add(rk);
         }
 
-        final int BATCH = 10; // regenerateChunk is heavier â€” keep batches small
+        final int BATCH = 10;
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
@@ -271,16 +370,8 @@ public class PlotManager {
             for (int i = cursor[0]; i < end; i++) {
                 int cx = coordList.get(i)[0];
                 int cz = coordList.get(i)[1];
-
-                // Ensure the chunk is loaded before we can regenerate it
-                if (!world.isChunkLoaded(cx, cz)) {
-                    world.loadChunk(cx, cz, true);
-                }
-
-                // Replace chunk content with void (uses our VoidChunkGenerator)
+                if (!world.isChunkLoaded(cx, cz)) world.loadChunk(cx, cz, true);
                 world.regenerateChunk(cx, cz);
-
-                // Now safe to unload â€” chunk is no longer dirty after regeneration
                 world.unloadChunk(cx, cz, false);
             }
             cursor[0] = end;
@@ -288,8 +379,6 @@ public class PlotManager {
             if (cursor[0] >= coordList.size()) {
                 task.cancel();
 
-                // Bonus: delete fully-owned region files from disk.
-                // Use int[] so it can be referenced inside the logger lambda.
                 int[] deleted = {0};
                 for (long rk : deletableRegions) {
                     int rx = (int)(rk & 0xFFFFFFFFL);
@@ -301,29 +390,14 @@ public class PlotManager {
                 final int chunkCount = coordList.size();
                 final int delCount   = deleted[0];
                 plugin.getLogger().info(() -> "[PlotManager] Cleanup done: "
-                        + chunkCount + " chunks regenerated, "
+                        + chunkCount + " chunks cleared, "
                         + delCount + " region files deleted.");
                 onComplete.run();
             }
         }, 1L, 1L);
     }
 
-    /**
-     * Safe fallback plot erasure using direct block-by-block AIR fill.
-     *
-     * Slower than destroyAllPlots() but guaranteed to visually clear the
-     * build regardless of Paper's chunk save behaviour.
-     * Exposed via /safe_erase_plots for admin use when normal cleanup fails.
-     *
-     * Batched at 2 chunks/tick â€” each chunk has up to 65536 block sets so
-     * we keep batches small to avoid tick spikes. The operation runs over
-     * several seconds but produces no lag spikes.
-     *
-     * @param onComplete Called on the main thread when done.
-     */
     public void safeErasePlots(Runnable onComplete) {
-        // Take a snapshot â€” can be called while orderedPlots is still populated
-        // (admin might call this mid-game as an emergency)
         List<Plot> toErase = new ArrayList<>(orderedPlots);
         plotsByOwner.clear();
         orderedPlots.clear();
@@ -334,7 +408,10 @@ public class PlotManager {
             return;
         }
 
-        // Collect chunks
+        for (Plot plot : toErase) removePlotRegion(plot);
+        RegionManager rm = getRegionManager();
+        if (rm != null) saveRegions(rm);
+
         Map<Long, int[]> chunkCoords = new LinkedHashMap<>();
         for (Plot plot : toErase) {
             for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
@@ -347,7 +424,7 @@ public class PlotManager {
         List<int[]> coordList = new ArrayList<>(chunkCoords.values());
         int minY = world.getMinHeight();
         int maxY = world.getMaxHeight();
-        final int BATCH = 2; // 2 chunks/tick â€” each chunk up to 65536 block sets
+        final int BATCH = 2;
         final int[] cursor = {0};
 
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
@@ -366,7 +443,7 @@ public class PlotManager {
                         }
                     }
                 }
-                world.unloadChunk(cx, cz, true); // save=true to persist the now-empty chunk
+                world.unloadChunk(cx, cz, true);
             }
             cursor[0] = end;
 
@@ -380,10 +457,10 @@ public class PlotManager {
         }, 1L, 1L);
     }
 
-    // ── Lookup helpers ────────────────────────────────────────────────────────
+    // ── Lookups ───────────────────────────────────────────────────────────────
 
-    public Plot getPlot(UUID uuid)     { return plotsByOwner.get(uuid); }
-    public Plot getPlot(Player player) { return getPlot(player.getUniqueId()); }
+    public Plot getPlot(UUID uuid)      { return plotsByOwner.get(uuid); }
+    public Plot getPlot(Player player)  { return getPlot(player.getUniqueId()); }
 
     public Plot getPlotAtLocation(Location loc) {
         if (!loc.getWorld().equals(world)) return null;
@@ -395,11 +472,10 @@ public class PlotManager {
         return null;
     }
 
-    public List<Plot> getOrderedPlots()     { return Collections.unmodifiableList(orderedPlots); }
-    public Map<UUID, Plot> getPlotsByOwner(){ return Collections.unmodifiableMap(plotsByOwner); }
-    public World getWorld()                 { return world; }
-    public int   getInnerBlocks()           { return innerBlocks; }
-    public int   getBufferBlocks()          { return bufferBlocks; }
-    public int   getTotalBlocks()           { return totalBlocks; }
+    public List<Plot> getOrderedPlots()      { return Collections.unmodifiableList(orderedPlots); }
+    public Map<UUID, Plot> getPlotsByOwner() { return Collections.unmodifiableMap(plotsByOwner); }
+    public World getWorld()                  { return world; }
+    public int   getInnerBlocks()            { return innerBlocks; }
+    public int   getBufferBlocks()           { return bufferBlocks; }
+    public int   getTotalBlocks()            { return totalBlocks; }
 }
-

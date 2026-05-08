@@ -13,7 +13,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 - Run from `start.bat` (Windows) or `start.sh` (Linux)
 
 - You can PvP in the lobby
-- enable it via /dopvp enable
+- enable it via /config lobbypvp enable
 - then you can do /pvpready to get pvp tools
 
 ---
@@ -36,9 +36,10 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 
 | Dependency | Version | Where to get |
 |---|---|---|
-| Paper | 1.20.1 | [papermc.io](https://papermc.io/downloads) |
+| Paper | 1.20.2 | [papermc.io](https://papermc.io/downloads) |
 | FastAsyncWorldEdit | 7.3.x | [dev.enginehub.org](https://intellectualsites.github.io/download/fawe.html) |
 | ProtocolLib | 2.11.x | [ci.dmulloy2.net](https://ci.dmulloy2.net/job/ProtocolLib/) |
+| WorldGuard | 7.0.x | [modrinth](https://modrinth.com/plugin/worldguard/versions) |
 | Java | 17+ | [adoptium.net](https://adoptium.net) |
 
 ---

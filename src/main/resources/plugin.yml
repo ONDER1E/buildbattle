@@ -3,7 +3,8 @@ version: '${project.version}'
 main: dev.onder1e.buildbattle.BuildBattle
 api-version: '1.20'
 depend:
-  - WorldEdit
+  - FastAsyncWorldEdit
+  - WorldGuard
   - ProtocolLib
 
 description: A production-ready Build Battle plugin
@@ -72,10 +73,6 @@ commands:
   safe_erase_plots:
     description: Emergency block-by-block plot wipe. Use if normal cleanup fails.
     usage: /safe_erase_plots
-    permission: buildbattle.admin
-  dopvp:
-    description: Toggle lobby PvP status.
-    usage: /dopvp <true|false>
     permission: buildbattle.admin
 
 

@@ -91,6 +91,7 @@ public class GameManager {
     private int votingSeconds;
     private int minPlayers;
     private int lobbyReturnSeconds;
+    private boolean lobbyPvP;
 
     public GameManager(BuildBattle plugin, PlotManager plotManager, PacketHandler packetHandler) {
         this.plugin        = plugin;
@@ -105,6 +106,7 @@ public class GameManager {
         votingSeconds        = plugin.getConfig().getInt("voting_timer",         30);
         minPlayers           = plugin.getConfig().getInt("min_players",           2);
         lobbyReturnSeconds   = plugin.getConfig().getInt("lobby_return_timer",   30);
+        lobbyPvP             = plugin.getConfig().getBoolean("lobbyPvP",      false);
     }
 
     // =========================================================================
@@ -173,7 +175,7 @@ public class GameManager {
         switch (key) {
             case "game_timer" -> {
                 int v = parsePositiveInt(value, 1, 120);
-                if (v < 0) return "game_timer must be 1–120 minutes.";
+                if (v < 0) return "game_timer must be 1-120 minutes.";
                 plugin.getConfig().set("game_timer", v);
                 plugin.saveConfig();
                 // Takes effect next BUILDING phase
@@ -181,21 +183,21 @@ public class GameManager {
             }
             case "word_selection_timer" -> {
                 int v = parsePositiveInt(value, 10, 300);
-                if (v < 0) return "word_selection_timer must be 10–300 seconds.";
+                if (v < 0) return "word_selection_timer must be 10-300 seconds.";
                 plugin.getConfig().set("word_selection_timer", v);
                 plugin.saveConfig();
                 return "word_selection_timer set to " + v + "s. Takes effect next theme vote.";
             }
             case "voting_timer" -> {
                 int v = parsePositiveInt(value, 5, 300);
-                if (v < 0) return "voting_timer must be 5–300 seconds.";
+                if (v < 0) return "voting_timer must be 5-300 seconds.";
                 plugin.getConfig().set("voting_timer", v);
                 plugin.saveConfig();
                 return "voting_timer set to " + v + "s. Takes effect next voting phase.";
             }
             case "min_players" -> {
                 int v = parsePositiveInt(value, 1, 20);
-                if (v < 0) return "min_players must be 1–20.";
+                if (v < 0) return "min_players must be 1-20.";
                 plugin.getConfig().set("min_players", v);
                 plugin.saveConfig();
                 minPlayers = v; // immediate effect
@@ -203,7 +205,7 @@ public class GameManager {
             }
             case "lobby_return_timer" -> {
                 int v = parsePositiveInt(value, 5, 120);
-                if (v < 0) return "lobby_return_timer must be 5–120 seconds.";
+                if (v < 0) return "lobby_return_timer must be 5-120 seconds.";
                 plugin.getConfig().set("lobby_return_timer", v);
                 plugin.saveConfig();
                 lobbyReturnSeconds = v; // immediate effect
@@ -211,19 +213,25 @@ public class GameManager {
             }
             case "plot_size" -> {
                 int v = parsePositiveInt(value, 1, 30);
-                if (v < 0) return "plot_size must be 1–30 chunks.";
+                if (v < 0) return "plot_size must be 1-30 chunks.";
                 plugin.getConfig().set("plot_size", v);
                 plugin.saveConfig();
                 return "plot_size set to " + v + " chunks. Takes effect next game.";
             }
             case "buffer_size" -> {
                 int v = parsePositiveInt(value, 1, 10);
-                if (v < 0) return "buffer_size must be 1–10 chunks.";
+                if (v < 0) return "buffer_size must be 1-10 chunks.";
                 plugin.getConfig().set("buffer_size", v);
                 plugin.saveConfig();
                 return "buffer_size set to " + v + " chunks. Takes effect next game.";
             }
-            default -> { return "Unknown key '" + key + "'. Valid keys: game_timer, word_selection_timer, voting_timer, min_players, lobby_return_timer, plot_size, buffer_size"; }
+            case "lobbypvp" -> {
+                boolean v = Boolean.parseBoolean(value);
+                plugin.getConfig().set("lobbyPvP", v);
+                plugin.saveConfig();
+                return "Lobby PvP is now " + (v ? "ENABLED" : "DISABLED");
+            }
+            default -> { return "Unknown key '" + key + "'. Valid keys: game_timer, word_selection_timer, voting_timer, min_players, lobby_return_timer, plot_size, buffer_size, lobbyPvP"; }
         }
     }
 
@@ -234,6 +242,7 @@ public class GameManager {
         votingSeconds        = plugin.getConfig().getInt("voting_timer",         votingSeconds);
         minPlayers           = plugin.getConfig().getInt("min_players",          minPlayers);
         lobbyReturnSeconds   = plugin.getConfig().getInt("lobby_return_timer",   lobbyReturnSeconds);
+        lobbyPvP             = plugin.getConfig().getBoolean("lobbyPvP",   lobbyPvP);
     }
 
     private int parsePositiveInt(String s, int min, int max) {
@@ -733,12 +742,8 @@ public class GameManager {
         player.sendMessage(sep());
     }
 
-    public void setLobbyPvP(boolean enabled) {
-        this.lobbyPvPEnabled = enabled;
-    }
-
     public boolean isLobbyPvPEnabled() {
-        return lobbyPvPEnabled;
+        return plugin.getConfig().getBoolean("lobbyPvP", false);
     }
 
     // =========================================================================

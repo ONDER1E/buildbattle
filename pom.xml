@@ -22,11 +22,12 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- EngineHub hosts WorldEdit, FAWE, and WorldGuard -->
         <repository>
             <id>enginehub</id>
             <url>https://maven.enginehub.org/repo/</url>
         </repository>
-        <!-- ProtocolLib is hosted on dmulloy2's repo, NOT Maven Central -->
+        <!-- ProtocolLib -->
         <repository>
             <id>dmulloy2-repo</id>
             <url>https://repo.dmulloy2.net/repository/public/</url>
@@ -34,21 +35,31 @@
     </repositories>
 
     <dependencies>
-        <!-- Paper API — match your server version exactly -->
+        <!-- Paper API -->
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
-            <version>1.20.1-R0.1-SNAPSHOT</version>
+            <version>1.20.2-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        <!-- WorldEdit API -->
+
+        <!-- FastAsyncWorldEdit (replaces vanilla WorldEdit) -->
         <dependency>
             <groupId>com.sk89q.worldedit</groupId>
             <artifactId>worldedit-bukkit</artifactId>
             <version>7.3.0-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
-        <!-- ProtocolLib for packet interception — hosted on dmulloy2-repo -->
+
+        <!-- WorldGuard — region protection -->
+        <dependency>
+            <groupId>com.sk89q.worldguard</groupId>
+            <artifactId>worldguard-bukkit</artifactId>
+            <version>7.0.9</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- ProtocolLib — chunk packet isolation -->
         <dependency>
             <groupId>com.comphenix.protocol</groupId>
             <artifactId>ProtocolLib</artifactId>
@@ -78,16 +89,12 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <!-- false = don't write a dependency-reduced pom next to the jar -->
                             <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <!-- Explicitly embed main class in MANIFEST so Paper can always find it -->
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <mainClass>dev.onder1e.buildbattle.BuildBattle</mainClass>
                                 </transformer>
                             </transformers>
-                            <!-- shadedArtifactAttached=false means the shaded jar IS the primary artifact -->
-                            <!-- The "original-" jar is the pre-shade backup — never deploy that one -->
                             <shadedArtifactAttached>false</shadedArtifactAttached>
                         </configuration>
                     </execution>
