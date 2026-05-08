@@ -27,7 +27,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 - **Dynamic plot generation** - plots generated on demand in the positive X direction, one per player, async chunk loading with no main-thread lag
 - **WorldEdit masking** - `EditSessionEvent` extent injection blocks all WE operations outside a player's inner plot (works in all game states including lobby)
 - **Packet-level isolation** - ProtocolLib intercepts `MAP_CHUNK` packets so players only receive chunks for their own plot during building; voting phase refreshes the correct chunks
-- **PvP lobby** - 60Ã-60 glass arena with full netherite kit (sword, pickaxe, bow, shield, poison arrows) given on join, cleared on game start
+- **PvP lobby** - 60x60 glass arena with full netherite kit (sword, pickaxe, bow, shield, poison arrows) given on join, cleared on game start
 - **Plot customisation** - `/setplotblock` to change the y=64 floor material
 - **Admin tools** - pause/resume countdown, live config editing, force-start/end/choose, theme pool management, emergency `/safe_erase_plots`
 - **Disconnect safety** - join/leave during any phase handled cleanly; `WORD_SELECTION` resets if player count changes; late joiners park as lobby waiters and auto-join next round
