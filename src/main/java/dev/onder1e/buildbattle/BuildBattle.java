@@ -17,11 +17,13 @@ import org.bukkit.plugin.java.JavaPlugin;
 import dev.onder1e.buildbattle.commands.AddWordCommand;
 import dev.onder1e.buildbattle.commands.ChooseCommand;
 import dev.onder1e.buildbattle.commands.ConfigCommand;
+import dev.onder1e.buildbattle.commands.DoPvPCommand;
 import dev.onder1e.buildbattle.commands.DoneCommand;
 import dev.onder1e.buildbattle.commands.ForceChooseCommand;
 import dev.onder1e.buildbattle.commands.ForceEndCommand;
 import dev.onder1e.buildbattle.commands.ForceStartCommand;
 import dev.onder1e.buildbattle.commands.PauseResumeCommand;
+import dev.onder1e.buildbattle.commands.PvPReadyCommand;
 import dev.onder1e.buildbattle.commands.ReadyCommand;
 import dev.onder1e.buildbattle.commands.RemoveWordCommand;
 import dev.onder1e.buildbattle.commands.SafeErasePlotsCommand;
@@ -39,6 +41,7 @@ import dev.onder1e.buildbattle.plot.PlotManager;
 public final class BuildBattle extends JavaPlugin {
 
     private static BuildBattle instance;
+    private World gameWorld;
 
     private PlotManager   plotManager;
     private GameManager   gameManager;
@@ -62,7 +65,7 @@ public final class BuildBattle extends JavaPlugin {
         instance = this;
         saveDefaultConfig();
 
-        World gameWorld = setupVoidWorld();
+        this.gameWorld = setupVoidWorld();
         lobbySpawn = buildLobby(gameWorld);
 
         Bukkit.getOnlinePlayers().forEach(p -> {
@@ -78,10 +81,14 @@ public final class BuildBattle extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new PlayerListener(this, gameManager), this);
         
         // Assigned to field to resolve diagnostic hints
-        this.worldEditListener = WorldEditListener.register(gameManager, plotManager);
+        this.worldEditListener = WorldEditListener.register(this, gameManager, plotManager);
 
         registerCommands();
         getLogger().info("BuildBattle enabled successfully!");
+    }
+
+    public World getGameWorld() {
+        return gameWorld;
     }
 
     @Override
@@ -89,6 +96,25 @@ public final class BuildBattle extends JavaPlugin {
         if (gameManager   != null) gameManager.forceReset();
         if (packetHandler != null) packetHandler.unregister();
         getLogger().info("BuildBattle disabled.");
+    }
+
+    public void clearWoolInLobby(World world) {
+        int ox = -(LOBBY_SIZE + 100);
+        int oz = -(LOBBY_SIZE / 2);
+        int oy = LOBBY_FLOOR_Y;
+        int s  = LOBBY_SIZE;
+        int h  = LOBBY_HEIGHT;
+
+        for (int y = oy - 1; y <= oy + h + 1; y++) {
+            for (int x = ox; x <= ox + s; x++) {
+                for (int z = oz; z <= oz + s; z++) {
+                    Material mat = world.getBlockAt(x, y, z).getType();
+                    if (mat.name().endsWith("_WOOL")) {
+                        world.getBlockAt(x, y, z).setType(Material.AIR, false);
+                    }
+                }
+            }
+        }
     }
 
     // ── World setup ───────────────────────────────────────────────────────────
@@ -108,7 +134,7 @@ public final class BuildBattle extends JavaPlugin {
         return world;
     }
 
-    private Location buildLobby(World world) {
+    public Location buildLobby(World world) {
         int ox = -(LOBBY_SIZE + 100);
         int oz = -(LOBBY_SIZE / 2);
         int oy = LOBBY_FLOOR_Y;
@@ -194,6 +220,8 @@ public final class BuildBattle extends JavaPlugin {
         Objects.requireNonNull(getCommand("resume")).setExecutor(pauseResume);
         Objects.requireNonNull(getCommand("config")).setExecutor(new ConfigCommand(gameManager));
         Objects.requireNonNull(getCommand("safe_erase_plots")).setExecutor(new SafeErasePlotsCommand(this, gameManager));
+        Objects.requireNonNull(getCommand("dopvp")).setExecutor(new DoPvPCommand(gameManager));
+        Objects.requireNonNull(getCommand("pvpready")).setExecutor(new PvPReadyCommand(gameManager));
     }
 
     // ── Lobby bounds ──────────────────────────────────────────────────────────

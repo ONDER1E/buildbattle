@@ -74,19 +74,16 @@ public class PlayerListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
+        Material type = event.getBlock().getType();
+
         if (plugin.isInsideLobby(event.getBlock().getLocation())) {
-            event.setCancelled(true);
-            return;
+            if (!type.name().endsWith("_WOOL")) {
+                event.setCancelled(true);
+            }
+            return; 
         }
 
-        // Existing Barrier protection
-        if (event.getBlock().getType() == Material.BARRIER) {
-            event.setCancelled(true);
-            return;
-        }
-
-        // Barrier blocks (lobby walls) are always indestructible
-        if (event.getBlock().getType() == Material.BARRIER) {
+        if (type == Material.BARRIER) {
             event.setCancelled(true);
             return;
         }

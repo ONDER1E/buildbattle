@@ -12,11 +12,9 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 - Fully plug and play
 - Run from `start.bat` (Windows) or `start.sh` (Linux)
 
-- You can PvP in the lobby, theres a worldedit schematic you can load called `set`
-- `set` gives you a Netherite sword, axe, armour and bow, 64 poision tipped arrows, 1 elytra, 64 rockets and a shield in the offhand
-- After opping yourself and you join the server you will spawn at the centre of the lobby
-- Do `//schem load set` then do `//paste` and a stack of command blocks will be above you
-- Press the button to get PvP items, you can remove an item you dont want by just removing the command of its respective command block  
+- You can PvP in the lobby
+- enable it via /dopvp enable
+- then you can do /pvpready to get pvp tools
 
 ---
 
@@ -39,8 +37,8 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 | Dependency | Version | Where to get |
 |---|---|---|
 | Paper | 1.20.1 | [papermc.io](https://papermc.io/downloads) |
-| WorldEdit | 7.3.x | [dev.enginehub.org](https://dev.enginehub.org/job/worldedit/) |
-| ProtocolLib | 5.3.0 | [ci.dmulloy2.net](https://ci.dmulloy2.net/job/ProtocolLib/) |
+| FastAsyncWorldEdit | 7.3.x | [dev.enginehub.org](https://intellectualsites.github.io/download/fawe.html) |
+| ProtocolLib | 2.11.x | [ci.dmulloy2.net](https://ci.dmulloy2.net/job/ProtocolLib/) |
 | Java | 17+ | [adoptium.net](https://adoptium.net) |
 
 ---

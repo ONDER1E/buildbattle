@@ -31,6 +31,10 @@ commands:
     description: Change your plot floor block during building.
     usage: /setplotblock <material>
     permission: buildbattle.play
+  pvpready:
+    description: Get equipment for lobby PvP.
+    usage: /pvpready
+    permission: buildbattle.play
 
   # ── Admin commands ───────────────────────────────────────────────────────────
   force_start:
@@ -69,6 +73,11 @@ commands:
     description: Emergency block-by-block plot wipe. Use if normal cleanup fails.
     usage: /safe_erase_plots
     permission: buildbattle.admin
+  dopvp:
+    description: Toggle lobby PvP status.
+    usage: /dopvp <true|false>
+    permission: buildbattle.admin
+
 
 permissions:
   buildbattle.play:

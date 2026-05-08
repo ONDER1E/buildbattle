@@ -1,5 +1,29 @@
 package dev.onder1e.buildbattle.game;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import java.util.logging.Level;
+import java.util.stream.Collectors;
+
+import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
+
 import dev.onder1e.buildbattle.BuildBattle;
 import dev.onder1e.buildbattle.packet.PacketHandler;
 import dev.onder1e.buildbattle.plot.Plot;
@@ -7,15 +31,6 @@ import dev.onder1e.buildbattle.plot.PlotManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
-import org.bukkit.*;
-import org.bukkit.entity.Player;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.scheduler.BukkitRunnable;
-import org.bukkit.scheduler.BukkitTask;
-
-import java.util.*;
-import java.util.logging.Level;
-import java.util.stream.Collectors;
 
 /**
  * GameManager - central state machine.
@@ -50,6 +65,9 @@ public class GameManager {
     private final Set<UUID> participants  = new LinkedHashSet<>();
     private final Set<UUID> readyPlayers  = new HashSet<>();
     private final Set<UUID> lobbyWaiters  = new LinkedHashSet<>();
+
+
+    private boolean lobbyPvPEnabled = false;
 
     // ── Word selection ────────────────────────────────────────────────────────
     private List<String>               themeCandidates = new ArrayList<>();
@@ -691,6 +709,11 @@ public class GameManager {
     }
 
     private void enterLobby() {
+        World world = plugin.getGameWorld();
+        if (world != null) {
+            plugin.clearWoolInLobby(world);
+        }
+
         Bukkit.getOnlinePlayers().forEach(p -> {
             clearInventory(p);
         });
@@ -708,6 +731,14 @@ public class GameManager {
         player.sendMessage(Component.text("  Welcome to Build Battle!", NamedTextColor.GOLD, TextDecoration.BOLD));
         player.sendMessage(Component.text("  /ready - toggle your ready status", NamedTextColor.YELLOW));
         player.sendMessage(sep());
+    }
+
+    public void setLobbyPvP(boolean enabled) {
+        this.lobbyPvPEnabled = enabled;
+    }
+
+    public boolean isLobbyPvPEnabled() {
+        return lobbyPvPEnabled;
     }
 
     // =========================================================================
