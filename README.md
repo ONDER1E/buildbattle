@@ -1,6 +1,6 @@
 # BuildBattle
 
-A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
+A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 
 > ⚠️ **Honest disclosure:** This plugin was vibe coded with Claude (Anthropic AI). Every class, config, and fix in this repository was written through an iterative back-and-forth with an AI assistant across ~15 sessions. The architecture decisions, bug reports, and feature ideas came from the developer (onder1e); the implementation came from Claude. If something is broken, that's on both of us.
 
@@ -40,13 +40,13 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 | FastAsyncWorldEdit | 7.3.x | [dev.enginehub.org](https://intellectualsites.github.io/download/fawe.html) |
 | ProtocolLib | 2.11.x | [ci.dmulloy2.net](https://ci.dmulloy2.net/job/ProtocolLib/) |
 | WorldGuard | 7.0.x | [modrinth](https://modrinth.com/plugin/worldguard/versions) |
-| Java | 17+ | [adoptium.net](https://adoptium.net) |
+| Java | 21+ | [adoptium.net](https://adoptium.net) |
 
 ---
 
 ## Permissions
 
-- Players need these permission nodes to play:
+- Players need these permission nodes to play (Already setup in the serverPack):
 ```
 worldedit.brush.*
 worldedit.region.*
@@ -182,4 +182,3 @@ commands/
 
 - Plot cleanup uses `world.regenerateChunk()` (deprecated in Paper 1.20+) as it is the only reliable no-NMS approach on this version. `/safe_erase_plots` provides a block-by-block fallback.
 - The packet isolation approach (sending fake air chunks) works for standard clients but may not fully block FreeCam mods that read memory directly.
-- WorldEdit `//copy` of another player's build is possible if they `/paste` inside their own plot - the mask only restricts writes, not reads.
