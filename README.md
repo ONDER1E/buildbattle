@@ -13,6 +13,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.1**.
 - Run from `start.bat` (Windows) or `start.sh` (Linux)
 
 - You can PvP in the lobby, theres a worldedit schematic you can load called `set`
+- `set` gives you a Netherite sword, axe, armour and bow, 64 poision tipped arrows, 1 elytra, 64 rockets and a shield in the offhand
 - After opping yourself and you join the server you will spawn at the centre of the lobby
 - Do `//schem load set` then do `//paste` and a stack of command blocks will be above you
 - Press the button to get PvP items, you can remove an item you dont want by just removing the command of its respective command block  
