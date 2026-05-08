@@ -507,6 +507,9 @@ public class GameManager {
             broadcast(Component.text("  Commands:", NamedTextColor.WHITE, TextDecoration.BOLD));
             broadcast(Component.text("  /done                    - finish early", NamedTextColor.GRAY));
             broadcast(Component.text("  /setplotblock <material> - change floor block", NamedTextColor.GRAY));
+            broadcast(Component.text("  //wand                   - primary worldedit tool, make a selection of corners with right and left click", NamedTextColor.GRAY));
+            broadcast(Component.text("  //set <material>         - turn WE selection into another block", NamedTextColor.GRAY));
+            broadcast(Component.text("  //brush sphere <material>- turn WE tool into a brush", NamedTextColor.GRAY));
             broadcast(sep());
 
             startCountdown(buildTimerMinutes * 60, () -> {
@@ -739,6 +742,9 @@ public class GameManager {
         player.sendMessage(sep());
         player.sendMessage(Component.text("  Welcome to Build Battle!", NamedTextColor.GOLD, TextDecoration.BOLD));
         player.sendMessage(Component.text("  /ready - toggle your ready status", NamedTextColor.YELLOW));
+        if (isLobbyPvPEnabled()) {
+            player.sendMessage(Component.text("  /pvpready - get pvp equipment", NamedTextColor.YELLOW));
+        }
         player.sendMessage(sep());
     }
 
