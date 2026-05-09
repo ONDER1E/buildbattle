@@ -609,18 +609,22 @@ public class GameManager {
 
     private void advanceVoting() {
         List<Plot> plots = plotManager.getOrderedPlots();
-        
-        Plot finishedPlot = (votingPlotIndex > 0 && votingPlotIndex <= plots.size()) 
-                            ? plots.get(votingPlotIndex - 1) 
-                            : null;
 
         if (votingPlotIndex >= plots.size()) {
             currentVotingPlot = null;
-            if (finishedPlot != null) {
-                plotManager.destroySinglePlot(finishedPlot);
-            }
-            transitionTo(GameState.RESULTS); 
+            transitionTo(GameState.RESULTS);
             return;
+        }
+
+        // Destroy previous plot in background while players vote on current —
+        // players are already teleported away so destruction is invisible
+        if (votingPlotIndex > 0) {
+            Plot previousPlot = plots.get(votingPlotIndex - 1);
+            plotManager.destroySinglePlot(previousPlot, () ->
+                plugin.getLogger().log(Level.INFO,
+                    "[GameManager] Plot {0} destroyed during voting window",
+                    new Object[]{votingPlotIndex - 1})
+            );
         }
 
         Plot currentPlot = plots.get(votingPlotIndex);
@@ -630,24 +634,21 @@ public class GameManager {
         String ownerName = owner != null ? owner.getName() : "Unknown";
 
         broadcast(Component.text("Now viewing: " + ownerName + "'s build ("
-                + (votingPlotIndex + 1) + "/" + plots.size() + ")", NamedTextColor.AQUA, TextDecoration.BOLD));
+                + (votingPlotIndex + 1) + "/" + plots.size() + ")",
+                NamedTextColor.AQUA, TextDecoration.BOLD));
 
         Location centre = currentPlot.getCentreLocation(plotManager.getWorld());
         centre.add(0, 5, 0);
         List<Player> onlineParticipants = getOnlineParticipants();
-        
         onlineParticipants.forEach(p -> p.teleport(centre));
         packetHandler.refreshVotingChunks(currentPlot, onlineParticipants);
 
-        if (finishedPlot != null) {
-            plotManager.destroySinglePlot(finishedPlot);
-        }
+        broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!",
+                NamedTextColor.YELLOW));
 
-        broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!", NamedTextColor.YELLOW));
-
-        startCountdown(votingSeconds, () -> { 
-            votingPlotIndex++; 
-            advanceVoting(); 
+        startCountdown(votingSeconds, () -> {
+            votingPlotIndex++;
+            advanceVoting();
         });
     }
 

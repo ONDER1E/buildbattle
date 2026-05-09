@@ -400,36 +400,53 @@ public class PlotManager {
     }
 
     @SuppressWarnings("deprecation")
-    public void destroySinglePlot(Plot plot) {
-        if (plot == null) return;
+    public void destroySinglePlot(Plot plot, Runnable onComplete) {
+        if (plot == null) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
 
-        // 1. Remove WorldGuard regions immediately
+        // Remove WorldGuard region immediately — no need to wait for chunks
         removePlotRegion(plot);
         RegionManager rm = getRegionManager();
         if (rm != null) saveRegions(rm);
 
-        // 2. Identify and regenerate the chunks for this specific plot
-        int minX = plot.getTotalMinX() >> 4;
-        int maxX = plot.getTotalMaxX() >> 4;
-        int minZ = plot.getTotalMinZ() >> 4;
-        int maxZ = plot.getTotalMaxZ() >> 4;
-
-        for (int cx = minX; cx <= maxX; cx++) {
-            for (int cz = minZ; cz <= maxZ; cz++) {
-                // Load if necessary, regenerate, then unload to save memory
-                if (!world.isChunkLoaded(cx, cz)) {
-                    world.loadChunk(cx, cz, true);
-                }
-                world.regenerateChunk(cx, cz);
-                world.unloadChunk(cx, cz, false);
-            }
-        }
-
-        // 3. Remove from tracking maps so destroyAllPlots() skips it later
+        // Remove from tracking immediately so destroyAllPlots() skips it
         plotsByOwner.remove(plot.getOwnerUUID());
         orderedPlots.remove(plot);
 
-        plugin.getLogger().info(() -> "[PlotManager] Single plot destroyed for owner: " + plot.getOwnerUUID());
+        // Collect chunk coords for this plot only
+        List<int[]> coords = new ArrayList<>();
+        for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
+            for (int cz = plot.getTotalMinZ() >> 4; cz <= plot.getTotalMaxZ() >> 4; cz++) {
+                coords.add(new int[]{cx, cz});
+            }
+        }
+
+        final int BATCH = 10;
+        final int[] cursor = {0};
+        final int plotIndex = plot.getIndex();
+
+        // Dedicated task stored separately — never touches GameManager's countdownTask
+        Bukkit.getScheduler().runTaskTimer(plugin, task -> {
+            int end = Math.min(cursor[0] + BATCH, coords.size());
+            for (int i = cursor[0]; i < end; i++) {
+                int cx = coords.get(i)[0];
+                int cz = coords.get(i)[1];
+                if (!world.isChunkLoaded(cx, cz)) world.loadChunk(cx, cz, true);
+                world.regenerateChunk(cx, cz);
+                world.unloadChunk(cx, cz, false);
+            }
+            cursor[0] = end;
+
+            if (cursor[0] >= coords.size()) {
+                task.cancel();
+                plugin.getLogger().log(Level.INFO,
+                    "[PlotManager] Single plot {0} destroyed for owner: {1}",
+                    new Object[]{plotIndex, plot.getOwnerUUID()});
+                if (onComplete != null) onComplete.run();
+            }
+        }, 1L, 1L);
     }
 
     public void safeErasePlots(Runnable onComplete) {
