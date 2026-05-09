@@ -38,7 +38,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 | FastAsyncWorldEdit | 7.3.x | [dev.enginehub.org](https://intellectualsites.github.io/download/fawe.html) |
 | ProtocolLib | 2.11.x | [ci.dmulloy2.net](https://ci.dmulloy2.net/job/ProtocolLib/) |
 | WorldGuard | 7.0.x | [modrinth](https://modrinth.com/plugin/worldguard/versions) |
-| Java | 21+ | [adoptium.net](https://adoptium.net) |
+| Java | 21+ | [adoptium.net](https://adoptium.net/temurin/releases?version=21&os=any&arch=any) |
 
 ---
 
