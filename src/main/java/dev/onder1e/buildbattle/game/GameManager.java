@@ -268,6 +268,7 @@ public class GameManager {
         player.sendMessage(participants.toString());
         
         if (dc_participants.contains(uuid)) {
+            participants.add(uuid);
             handleReturningPlayer(player);
             return;
         }
@@ -349,6 +350,14 @@ public class GameManager {
                     }
                     transitionTo(GameState.LOBBY);
                 }
+            }
+            case BUILDING -> {
+                dc_participants.add(player.getUniqueId());
+                participants.remove(uuid); readyPlayers.remove(uuid);
+                Plot plot = plotManager.getPlot(uuid);
+                if (plot != null) plot.setDone(true);
+                if (wasParticipant) broadcast(Component.text(player.getName()
+                        + " disconnected.", NamedTextColor.GRAY));
             }
             default -> {
                 participants.remove(uuid); readyPlayers.remove(uuid);
