@@ -264,8 +264,6 @@ public class GameManager {
    
     public void handleJoin(Player player) {
         UUID uuid = player.getUniqueId();
-        player.sendMessage(uuid.toString());
-        player.sendMessage(participants.toString());
         
         if (dc_participants.contains(uuid)) {
             participants.add(uuid);
@@ -312,6 +310,7 @@ public class GameManager {
             }
             default -> {
                 player.sendMessage(Component.text("You rejoined after the game ended.", NamedTextColor.RED));
+                clearInventory(player);
                 addLobbyPlayer(player);
             }
         }
