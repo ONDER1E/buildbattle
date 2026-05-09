@@ -6,7 +6,7 @@
 
     <groupId>dev.onder1e</groupId>
     <artifactId>BuildBattle</artifactId>
-    <version>1.0.0</version>
+    <version>1.2.6</version>
     <packaging>jar</packaging>
 
     <name>BuildBattle</name>
@@ -51,7 +51,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- WorldGuard — region protection -->
+        <!-- WorldGuard - region protection -->
         <dependency>
             <groupId>com.sk89q.worldguard</groupId>
             <artifactId>worldguard-bukkit</artifactId>
@@ -59,7 +59,7 @@
             <scope>provided</scope>
         </dependency>
 
-        <!-- ProtocolLib — chunk packet isolation -->
+        <!-- ProtocolLib - chunk packet isolation -->
         <dependency>
             <groupId>com.comphenix.protocol</groupId>
             <artifactId>ProtocolLib</artifactId>

@@ -6,7 +6,7 @@ import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.flags.Flags;
 import com.sk89q.worldguard.protection.flags.StateFlag;
 import com.sk89q.worldguard.protection.managers.RegionManager;
-import com.sk89q.worldguard.protection.regions.GlobalProtectedRegion;
+import com.sk89q.worldguard.protection.managers.storage.StorageException;
 import com.sk89q.worldguard.protection.regions.ProtectedCuboidRegion;
 import com.sk89q.worldguard.protection.regions.RegionContainer;
 import dev.onder1e.buildbattle.BuildBattle;
@@ -14,6 +14,7 @@ import org.bukkit.*;
 import org.bukkit.entity.Player;
 
 import java.io.File;
+import java.util.logging.Level;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -207,9 +208,10 @@ public class PlotManager {
     private void saveRegions(RegionManager rm) {
         try {
             rm.save();
+        } catch (StorageException e) {
+            plugin.getLogger().log(Level.WARNING, "[PlotManager] WorldGuard storage error: {0}", e.getMessage());
         } catch (Exception e) {
-            plugin.getLogger().warning("[PlotManager] Failed to save WorldGuard regions: "
-                    + e.getMessage());
+            plugin.getLogger().log(Level.SEVERE, "[PlotManager] Unexpected error during region save:", e);
         }
     }
 

@@ -48,13 +48,26 @@ $code = $LASTEXITCODE
 Pop-Location
 
 if ($code -eq 0) {
-    $jar = Join-Path $ProjectRoot "target\BuildBattle-1.0.0.jar"
+    try {
+        [xml]$pom = Get-Content -Path "$ProjectRoot\pom.xml"
+        $Version = $pom.project.version
+        
+        if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "1.0.0" }
+    } catch {
+        $Version = "1.0.0"
+    }
+    # ------------------------------------------
+
+    $jarName = "BuildBattle-$Version.jar"
+    $jar = Join-Path $ProjectRoot "target\$jarName"
+    
     Write-Host ""
     Write-Host "====================================================" -ForegroundColor Green
     Write-Host " BUILD SUCCESSFUL!" -ForegroundColor Green
+    Write-Host " Version detected: $Version" -ForegroundColor Gray
     Write-Host " Copy THIS JAR to your server plugins folder:" -ForegroundColor Yellow
     Write-Host " $jar" -ForegroundColor Cyan
-    Write-Host " (NOT original-BuildBattle-1.0.0.jar)" -ForegroundColor Red
+    Write-Host " (NOT original-$jarName)" -ForegroundColor Red
     Write-Host "====================================================" -ForegroundColor Green
 } else {
     Write-Host "Build FAILED. Check Maven output above." -ForegroundColor Red

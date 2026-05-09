@@ -13,9 +13,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.PotionMeta;
-import org.bukkit.potion.PotionData;
-import org.bukkit.potion.PotionType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Random;
@@ -60,12 +57,6 @@ public class PvPReadyCommand implements CommandExecutor {
 
         // inventory.1 -> Slot 10 (Long Poison Arrows)
         ItemStack tippedArrow = new ItemStack(Material.TIPPED_ARROW, 64);
-        PotionMeta arrowMeta = (PotionMeta) tippedArrow.getItemMeta();
-        if (arrowMeta != null) {
-            // true, false = Extended (Long) Poison
-            arrowMeta.setBasePotionData(new PotionData(PotionType.POISON, true, false));
-            tippedArrow.setItemMeta(arrowMeta);
-        }
         inv.setItem(10, tippedArrow);
 
         // inventory.2 -> Slot 11 (Normal Arrow)

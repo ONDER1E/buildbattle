@@ -63,11 +63,9 @@ public class GameManager {
     private GameState currentState = GameState.LOBBY;
 
     private final Set<UUID> participants  = new LinkedHashSet<>();
+    private final Set<UUID> dc_participants  = new LinkedHashSet<>();
     private final Set<UUID> readyPlayers  = new HashSet<>();
     private final Set<UUID> lobbyWaiters  = new LinkedHashSet<>();
-
-
-    private boolean lobbyPvPEnabled = false;
 
     // ── Word selection ────────────────────────────────────────────────────────
     private List<String>               themeCandidates = new ArrayList<>();
@@ -266,8 +264,10 @@ public class GameManager {
    
     public void handleJoin(Player player) {
         UUID uuid = player.getUniqueId();
+        player.sendMessage(uuid.toString());
+        player.sendMessage(participants.toString());
         
-        if (participants.contains(uuid)) {
+        if (dc_participants.contains(uuid)) {
             handleReturningPlayer(player);
             return;
         }
@@ -308,6 +308,10 @@ public class GameManager {
             case RESULTS -> {
                 player.setGameMode(GameMode.SPECTATOR);
                 player.teleport(plugin.getLobbySpawn());
+            }
+            default -> {
+                player.sendMessage(Component.text("You rejoined after the game ended.", NamedTextColor.RED));
+                addLobbyPlayer(player);
             }
         }
     }
@@ -708,6 +712,7 @@ public class GameManager {
         allReturning.addAll(lobbyWaiters);
 
         participants.clear(); readyPlayers.clear();
+        dc_participants.clear();
         themeVotes.clear(); themeVoters.clear();
         themeCandidates.clear(); lobbyWaiters.clear();
         selectedTheme = ""; votingPlotIndex = 0;
