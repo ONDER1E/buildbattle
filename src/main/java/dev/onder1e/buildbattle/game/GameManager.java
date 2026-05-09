@@ -265,28 +265,49 @@ public class GameManager {
     }
    
     public void handleJoin(Player player) {
+        UUID uuid = player.getUniqueId();
+        
+        if (participants.contains(uuid)) {
+            handleReturningPlayer(player);
+            return;
+        }
+
         clearInventory(player);
         switch (currentState) {
             case LOBBY -> addLobbyPlayer(player);
             case WORD_SELECTION -> {
-                broadcast(Component.text(player.getName()
-                        + " joined - restarting theme vote!", NamedTextColor.YELLOW));
-                cancelCountdown();
-                themeVotes.clear(); themeVoters.clear(); themeCandidates.clear();
-                participants.add(player.getUniqueId());
-                readyPlayers.clear();
-                for (Player p : getOnlineParticipants()) {
-                    p.setGameMode(GameMode.SURVIVAL);
-                    p.teleport(plugin.getLobbySpawn());
-                }
                 transitionTo(GameState.LOBBY);
             }
             default -> {
-                lobbyWaiters.add(player.getUniqueId());
+                lobbyWaiters.add(uuid);
+                player.setGameMode(GameMode.SURVIVAL);
+                player.teleport(plugin.getLobbySpawn());
+                player.sendMessage(Component.text("A game is in progress. You'll join the next round!", NamedTextColor.YELLOW));
+            }
+        }
+    }
+
+    private void handleReturningPlayer(Player player) {
+        Plot plot = plotManager.getPlot(player);
+        
+        switch (currentState) {
+            case BUILDING -> {
+                player.setGameMode(GameMode.CREATIVE);
+                if (plot != null) {
+                    player.teleport(plot.getCentreLocation(plotManager.getWorld()));
+                    player.sendMessage(Component.text("Welcome back! Continue building!", NamedTextColor.GREEN));
+                }
+            }
+            case VOTING -> {
+                player.setGameMode(GameMode.SPECTATOR);
+                if (currentVotingPlot != null) {
+                    player.teleport(currentVotingPlot.getCentreLocation(plotManager.getWorld()));
+                }
+                player.sendMessage(Component.text("You rejoined during voting.", NamedTextColor.YELLOW));
+            }
+            case RESULTS -> {
                 player.setGameMode(GameMode.SPECTATOR);
                 player.teleport(plugin.getLobbySpawn());
-                player.sendMessage(Component.text(
-                        "A game is in progress. You'll join the next round!", NamedTextColor.YELLOW));
             }
         }
     }
