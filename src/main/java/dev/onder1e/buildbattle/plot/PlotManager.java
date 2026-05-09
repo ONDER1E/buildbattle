@@ -399,6 +399,39 @@ public class PlotManager {
         }, 1L, 1L);
     }
 
+    @SuppressWarnings("deprecation")
+    public void destroySinglePlot(Plot plot) {
+        if (plot == null) return;
+
+        // 1. Remove WorldGuard regions immediately
+        removePlotRegion(plot);
+        RegionManager rm = getRegionManager();
+        if (rm != null) saveRegions(rm);
+
+        // 2. Identify and regenerate the chunks for this specific plot
+        int minX = plot.getTotalMinX() >> 4;
+        int maxX = plot.getTotalMaxX() >> 4;
+        int minZ = plot.getTotalMinZ() >> 4;
+        int maxZ = plot.getTotalMaxZ() >> 4;
+
+        for (int cx = minX; cx <= maxX; cx++) {
+            for (int cz = minZ; cz <= maxZ; cz++) {
+                // Load if necessary, regenerate, then unload to save memory
+                if (!world.isChunkLoaded(cx, cz)) {
+                    world.loadChunk(cx, cz, true);
+                }
+                world.regenerateChunk(cx, cz);
+                world.unloadChunk(cx, cz, false);
+            }
+        }
+
+        // 3. Remove from tracking maps so destroyAllPlots() skips it later
+        plotsByOwner.remove(plot.getOwnerUUID());
+        orderedPlots.remove(plot);
+
+        plugin.getLogger().info(() -> "[PlotManager] Single plot destroyed for owner: " + plot.getOwnerUUID());
+    }
+
     public void safeErasePlots(Runnable onComplete) {
         List<Plot> toErase = new ArrayList<>(orderedPlots);
         plotsByOwner.clear();

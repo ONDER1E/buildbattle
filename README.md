@@ -2,8 +2,6 @@
 
 A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 
-> ⚠️ **Honest disclosure:** This plugin was vibe coded with Claude (Anthropic AI). Every class, config, and fix in this repository was written through an iterative back-and-forth with an AI assistant across ~15 sessions. The architecture decisions, bug reports, and feature ideas came from the developer (onder1e); the implementation came from Claude. If something is broken, that's on both of us.
-
 ---
 
 ## Server Pack

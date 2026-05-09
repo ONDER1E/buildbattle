@@ -609,9 +609,18 @@ public class GameManager {
 
     private void advanceVoting() {
         List<Plot> plots = plotManager.getOrderedPlots();
+        
+        Plot finishedPlot = (votingPlotIndex > 0 && votingPlotIndex <= plots.size()) 
+                            ? plots.get(votingPlotIndex - 1) 
+                            : null;
+
         if (votingPlotIndex >= plots.size()) {
             currentVotingPlot = null;
-            transitionTo(GameState.RESULTS); return;
+            if (finishedPlot != null) {
+                plotManager.destroySinglePlot(finishedPlot);
+            }
+            transitionTo(GameState.RESULTS); 
+            return;
         }
 
         Plot currentPlot = plots.get(votingPlotIndex);
@@ -620,18 +629,26 @@ public class GameManager {
         Player owner = Bukkit.getPlayer(currentPlot.getOwnerUUID());
         String ownerName = owner != null ? owner.getName() : "Unknown";
 
-        broadcast(Component.text("Now viewing: " + ownerName + "'s build  ("
+        broadcast(Component.text("Now viewing: " + ownerName + "'s build ("
                 + (votingPlotIndex + 1) + "/" + plots.size() + ")", NamedTextColor.AQUA, TextDecoration.BOLD));
 
         Location centre = currentPlot.getCentreLocation(plotManager.getWorld());
         centre.add(0, 5, 0);
         List<Player> onlineParticipants = getOnlineParticipants();
+        
         onlineParticipants.forEach(p -> p.teleport(centre));
         packetHandler.refreshVotingChunks(currentPlot, onlineParticipants);
 
+        if (finishedPlot != null) {
+            plotManager.destroySinglePlot(finishedPlot);
+        }
+
         broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!", NamedTextColor.YELLOW));
 
-        startCountdown(votingSeconds, () -> { votingPlotIndex++; advanceVoting(); });
+        startCountdown(votingSeconds, () -> { 
+            votingPlotIndex++; 
+            advanceVoting(); 
+        });
     }
 
     public void castVote(Player voter, int score) {
