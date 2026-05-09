@@ -11,7 +11,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 - Run from `start.bat` (Windows) or `start.sh` (Linux)
 
 - You can PvP in the lobby
-- enable it via /config lobbypvp enable
+- enable it via /config lobbypvp true
 - then you can do /pvpready to get pvp tools
 
 ---
@@ -21,7 +21,7 @@ A production-ready **Build Battle** minigame plugin for **Paper 1.20.2**.
 - **Plug and play** - game is designed to begin from a clean vanilla paper installation
 - **Full state machine** - `LOBBY - WORD_SELECTION - BUILDING - VOTING - RESULTS - RESET`
 - **Dynamic plot generation** - plots generated on demand in the positive X direction, one per player, async chunk loading with no main-thread lag
-- **WorldEdit masking** - `EditSessionEvent` extent injection blocks all WE operations outside a player's inner plot (works in all game states including lobby)
+- **WorldEdit protection** - Uses WorldGuard to prevent out of bounds edits
 - **Packet-level isolation** - ProtocolLib intercepts `MAP_CHUNK` packets so players only receive chunks for their own plot during building; voting phase refreshes the correct chunks
 - **PvP lobby** - 60x60 glass arena with full netherite kit (sword, pickaxe, bow, shield, poison arrows) given on join, cleared on game start
 - **Plot customisation** - `/setplotblock` to change the y=64 floor material

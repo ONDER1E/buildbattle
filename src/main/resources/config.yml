@@ -19,7 +19,6 @@ voting_timer: 30
 # Minimum players required before the game can start.
 min_players: 2
 
-# FIX 3: How long (seconds) to show the results screen before returning everyone
 # to the lobby. Players will see a visible countdown in chat.
 lobby_return_timer: 30
 
