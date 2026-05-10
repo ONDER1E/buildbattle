@@ -7,7 +7,7 @@ import org.bukkit.command.*;
 import org.bukkit.entity.Player;
 
 /**
- * /vote <1-10> — Cast a numeric score for the build currently on display.
+ * /vote <1-10> - Cast a numeric score for the build currently on display.
  *
  * Rules enforced by GameManager:
  *   - Only active during VOTING phase.

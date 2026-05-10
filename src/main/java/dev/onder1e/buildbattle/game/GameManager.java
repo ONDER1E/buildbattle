@@ -608,7 +608,6 @@ public class GameManager {
     }
 
     private void advanceVoting() {
-
         try {
             List<Plot> plots = plotManager.getOrderedPlots();
 
@@ -725,11 +724,30 @@ public class GameManager {
         }
 
         broadcast(Component.empty());
+        
         if (!ranked.isEmpty()) {
-            Player winner = Bukkit.getPlayer(ranked.get(0).getOwnerUUID());
-            broadcast(Component.text("  Winner: " + (winner != null ? winner.getName() : "Unknown") + "!",
-                    NamedTextColor.GOLD, TextDecoration.BOLD));
+            double highestScore = ranked.get(0).getAverageScore();
+            List<String> winners = new ArrayList<>();
+
+            for (Plot plot : ranked) {
+                if (Double.compare(plot.getAverageScore(), highestScore) == 0) {
+                    Player p = Bukkit.getPlayer(plot.getOwnerUUID());
+                    winners.add(p != null ? p.getName() : "Unknown");
+                } else {
+                    break; 
+                }
+            }
+
+            if (winners.size() > 1) {
+                String tieNames = String.join(" & ", winners);
+                broadcast(Component.text("  It's a Draw: " + tieNames + "!", 
+                        NamedTextColor.GOLD, TextDecoration.BOLD));
+            } else {
+                broadcast(Component.text("  Winner: " + winners.get(0) + "!", 
+                        NamedTextColor.GOLD, TextDecoration.BOLD));
+            }
         }
+
         broadcast(Component.empty());
         broadcast(Component.text("  Returning to lobby in " + lobbyReturnSeconds + "s...", NamedTextColor.GRAY));
         broadcast(sep());
