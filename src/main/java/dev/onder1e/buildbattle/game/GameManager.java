@@ -608,48 +608,64 @@ public class GameManager {
     }
 
     private void advanceVoting() {
-        List<Plot> plots = plotManager.getOrderedPlots();
 
-        if (votingPlotIndex >= plots.size()) {
-            currentVotingPlot = null;
+        try {
+            List<Plot> plots = plotManager.getOrderedPlots();
+
+            if (plots == null || votingPlotIndex >= plots.size()) {
+                currentVotingPlot = null;
+                transitionTo(GameState.RESULTS);
+                return;
+            }
+
+            if (votingPlotIndex > 0) {
+                Plot previousPlot = plots.get(votingPlotIndex - 1);
+                
+                plotManager.destroySinglePlot(previousPlot, () -> {
+                });
+            } else {
+            }
+
+            Plot currentPlot = plots.get(votingPlotIndex);
+            currentVotingPlot = currentPlot;
+
+            Player owner = Bukkit.getPlayer(currentPlot.getOwnerUUID());
+            String ownerName = owner != null ? owner.getName() : "Unknown";
+
+            broadcast(Component.text("Now viewing: " + ownerName + "'s build ("
+                    + (votingPlotIndex + 1) + "/" + plots.size() + ")",
+                    NamedTextColor.AQUA, TextDecoration.BOLD));
+
+            Location centre = currentPlot.getCentreLocation(plotManager.getWorld());
+            if (centre == null) {
+            } else {
+                centre.add(0, 5, 0);
+            }
+
+            List<Player> onlineParticipants = getOnlineParticipants();
+
+            for (Player p : onlineParticipants) {
+                if (p != null && p.isOnline()) {
+                    boolean success = p.teleport(centre);
+                } else {
+                }
+            }
+
+            packetHandler.refreshVotingChunks(currentPlot, onlineParticipants);
+
+            broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!",
+                    NamedTextColor.YELLOW));
+
+            
+            startCountdown(votingSeconds, () -> {
+                votingPlotIndex++;
+                advanceVoting();
+            });
+
+        } catch (Exception e) {
+            broadcast(Component.text("A technical error occurred. Skipping to results...", NamedTextColor.RED));
             transitionTo(GameState.RESULTS);
-            return;
         }
-
-        // Destroy previous plot in background while players vote on current —
-        // players are already teleported away so destruction is invisible
-        if (votingPlotIndex > 0) {
-            Plot previousPlot = plots.get(votingPlotIndex - 1);
-            plotManager.destroySinglePlot(previousPlot, () ->
-                plugin.getLogger().log(Level.INFO,
-                    "[GameManager] Plot {0} destroyed during voting window",
-                    new Object[]{votingPlotIndex - 1})
-            );
-        }
-
-        Plot currentPlot = plots.get(votingPlotIndex);
-        currentVotingPlot = currentPlot;
-
-        Player owner = Bukkit.getPlayer(currentPlot.getOwnerUUID());
-        String ownerName = owner != null ? owner.getName() : "Unknown";
-
-        broadcast(Component.text("Now viewing: " + ownerName + "'s build ("
-                + (votingPlotIndex + 1) + "/" + plots.size() + ")",
-                NamedTextColor.AQUA, TextDecoration.BOLD));
-
-        Location centre = currentPlot.getCentreLocation(plotManager.getWorld());
-        centre.add(0, 5, 0);
-        List<Player> onlineParticipants = getOnlineParticipants();
-        onlineParticipants.forEach(p -> p.teleport(centre));
-        packetHandler.refreshVotingChunks(currentPlot, onlineParticipants);
-
-        broadcast(Component.text("  /vote <1-10>  -  " + votingSeconds + "s to vote!",
-                NamedTextColor.YELLOW));
-
-        startCountdown(votingSeconds, () -> {
-            votingPlotIndex++;
-            advanceVoting();
-        });
     }
 
     public void castVote(Player voter, int score) {

@@ -406,16 +406,12 @@ public class PlotManager {
             return;
         }
 
-        // Remove WorldGuard region immediately — no need to wait for chunks
         removePlotRegion(plot);
         RegionManager rm = getRegionManager();
         if (rm != null) saveRegions(rm);
 
-        // Remove from tracking immediately so destroyAllPlots() skips it
         plotsByOwner.remove(plot.getOwnerUUID());
-        orderedPlots.remove(plot);
 
-        // Collect chunk coords for this plot only
         List<int[]> coords = new ArrayList<>();
         for (int cx = plot.getTotalMinX() >> 4; cx <= plot.getTotalMaxX() >> 4; cx++) {
             for (int cz = plot.getTotalMinZ() >> 4; cz <= plot.getTotalMaxZ() >> 4; cz++) {
@@ -427,7 +423,6 @@ public class PlotManager {
         final int[] cursor = {0};
         final int plotIndex = plot.getIndex();
 
-        // Dedicated task stored separately — never touches GameManager's countdownTask
         Bukkit.getScheduler().runTaskTimer(plugin, task -> {
             int end = Math.min(cursor[0] + BATCH, coords.size());
             for (int i = cursor[0]; i < end; i++) {

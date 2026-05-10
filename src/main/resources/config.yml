@@ -24,7 +24,7 @@ lobby_return_timer: 30
 
 lobbyPvP: false
 
-# Theme pool — 3 random themes are picked each round for players to vote on.
+# Theme pool - 3 random themes are picked each round for players to vote on.
 # Use /addword and /removeword to manage this list in-game (auto-saves here).
 themes: >
   spiderman, house, alien, rat, flute, castle, dragon, spaceship, pizza, robot,
