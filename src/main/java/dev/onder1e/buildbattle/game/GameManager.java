@@ -822,8 +822,6 @@ public class GameManager {
         syncConfig();
         broadcast(sep());
         broadcast(Component.text("        BUILD BATTLE  -  LOBBY", NamedTextColor.GOLD, TextDecoration.BOLD));
-        broadcast(sep());
-        broadcast(Component.text("  /ready - toggle your ready status", NamedTextColor.YELLOW));
         broadcast(Component.text("  Waiting for " + minPlayers + "+ players...", NamedTextColor.GRAY));
         broadcast(sep());
     }
@@ -902,7 +900,7 @@ public class GameManager {
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
-    private Component sep() { return Component.text("  " + "─".repeat(38), NamedTextColor.DARK_GRAY); }
+    private Component sep() { return Component.text("  " + "─".repeat(35), NamedTextColor.DARK_GRAY); }
     private void broadcast(Component msg) { Bukkit.broadcast(msg); }
     private List<Player> getOnlineParticipants() {
         return participants.stream().map(Bukkit::getPlayer)
