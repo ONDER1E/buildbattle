@@ -536,14 +536,18 @@ public class GameManager {
             broadcast(sep());
             broadcast(Component.text("  Theme : " + selectedTheme.toUpperCase(), NamedTextColor.AQUA, TextDecoration.BOLD));
             broadcast(Component.text("  Time  : " + buildTimerMinutes + " minutes", NamedTextColor.YELLOW));
-            broadcast(Component.empty());
-            broadcast(Component.text("  Commands:", NamedTextColor.WHITE, TextDecoration.BOLD));
-            broadcast(Component.text("  /done                    - finish early", NamedTextColor.GRAY));
-            broadcast(Component.text("  /setplotblock <material> - change floor block", NamedTextColor.GRAY));
-            broadcast(Component.text("  //wand                   - primary worldedit tool, make a selection of corners with right and left click", NamedTextColor.GRAY));
-            broadcast(Component.text("  //set <material>         - turn WE selection into another block", NamedTextColor.GRAY));
-            broadcast(Component.text("  //brush sphere <material>- turn WE tool into a brush", NamedTextColor.GRAY));
             broadcast(sep());
+
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                broadcast(Component.empty());
+                broadcast(Component.text("  WorldEdit Commands:", NamedTextColor.GOLD, TextDecoration.BOLD));
+                broadcast(Component.text("  //wand                   - primary tool (L/R Click corners)", NamedTextColor.GRAY));
+                broadcast(Component.text("  //set <material>         - fill selection with block", NamedTextColor.GRAY));
+                broadcast(Component.text("  //brush sphere <material>- turn tool into a brush", NamedTextColor.GRAY));
+                broadcast(Component.text("  /setplotblock <material> - change floor block", NamedTextColor.GRAY));
+                broadcast(Component.text("  /done                    - finish early", NamedTextColor.GRAY));
+                broadcast(sep());
+            }, 400L);
 
             startCountdown(buildTimerMinutes * 60, () -> {
                 broadcast(Component.text("Time's up! Moving to voting...", NamedTextColor.RED, TextDecoration.BOLD));
