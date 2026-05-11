@@ -7,7 +7,6 @@
 # ============================================================
 
 $ErrorActionPreference = "Stop"
-$utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 $ProjectRoot = $PSScriptRoot
 if (-not $ProjectRoot) { $ProjectRoot = (Get-Location).Path }
