@@ -42,7 +42,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
  *   This means they can see and fly around inside the build area (160x160)
  *   but cannot exit through the iron walls into the buffer zone.
  *   lobbyWaiters (late joiners) are NOT teleported to plots and are exempt
- *   from this confinement — they stay at lobby spawn.
+ *   from this confinement - they stay at lobby spawn.
  */
 public class PlayerListener implements Listener {
 
@@ -198,10 +198,10 @@ public class PlayerListener implements Listener {
         // ── VOTING: confine to the INNER boundary of the current voting plot ──
         //
         // We use INNER (not total) so spectators can freely explore the 160x160
-        // build area and view every block — they just can't exit through the
+        // build area and view every block - they just can't exit through the
         // iron walls into the buffer zone or another plot's space.
         //
-        // lobbyWaiters are exempt — they stay at lobby spawn and are not
+        // lobbyWaiters are exempt - they stay at lobby spawn and are not
         // teleported to voting plots, so no confinement applies to them.
         if (state == GameState.VOTING) {
             Plot votingPlot = gameManager.getCurrentVotingPlot();
