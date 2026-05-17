@@ -131,7 +131,7 @@ public final class BuildBattle extends JavaPlugin {
         world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
         world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
         world.setGameRule(org.bukkit.GameRule.KEEP_INVENTORY, true);
-        world.setPVP(false);
+        world.setPVP(true);
         world.setTime(6000);
         return world;
     }
