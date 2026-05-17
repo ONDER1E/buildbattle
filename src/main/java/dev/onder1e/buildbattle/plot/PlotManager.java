@@ -120,7 +120,7 @@ public class PlotManager {
 
         // Deny all building and interaction inside the lobby by default.
         // PvP (entity damage) is allowed - handled by world.setPVP(true).
-        region.setFlag(Flags.BUILD,    StateFlag.State.DENY);
+        region.setFlag(Flags.BUILD,    StateFlag.State.ALLOW);
         region.setFlag(Flags.INTERACT, StateFlag.State.DENY);
 
         rm.addRegion(region);
